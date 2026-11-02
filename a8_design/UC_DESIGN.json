@@ -1,0 +1,137 @@
+[
+  {
+    "test_id": "TC_UC_01",
+    "source_id": "UC-IWD-001 Main Flow",
+    "purpose": "Submit maintenance complaint successfully with complete required parameters.",
+    "preconditions": "Authenticated user.",
+    "action_or_input": "POST /api/v1/iwd/requests/ with title='Broken light fixture', location='Library 2nd Floor', category='electrical', priority='medium'.",
+    "expected_result": "HTTP 201 Created; status='draft'; complaint ID generated.",
+    "test_type": "UC Main Flow"
+  },
+  {
+    "test_id": "TC_UC_02",
+    "source_id": "UC-IWD-001 Alternative A1 (Validation Error)",
+    "purpose": "Submit maintenance complaint with missing title and location.",
+    "preconditions": "Authenticated user.",
+    "action_or_input": "POST /api/v1/iwd/requests/ with title='' and location=''.",
+    "expected_result": "HTTP 400 Bad Request; submission blocked with descriptive validation error.",
+    "test_type": "UC Exception Flow"
+  },
+  {
+    "test_id": "TC_UC_03",
+    "source_id": "UC-IWD-005 Main Flow",
+    "purpose": "Employee views and tracks status of existing complaints.",
+    "preconditions": "Multiple complaints submitted by requester.",
+    "action_or_input": "GET /api/v1/iwd/requests/ with user credentials.",
+    "expected_result": "HTTP 200 OK; returns array of user complaints with statuses.",
+    "test_type": "UC Main Flow"
+  },
+  {
+    "test_id": "TC_UC_04",
+    "source_id": "UC-IWD-015 Main Flow",
+    "purpose": "Engineer assesses assigned complaint and advances ticket to under review.",
+    "preconditions": "Complaint is submitted.",
+    "action_or_input": "POST /api/v1/iwd/requests/{id}/review/.",
+    "expected_result": "HTTP 200 OK; status changes from 'submitted' to 'under_review'.",
+    "test_type": "UC Main Flow"
+  },
+  {
+    "test_id": "TC_UC_05",
+    "source_id": "UC-IWD-021 Main Flow",
+    "purpose": "Engineer prepares and submits repair cost estimate and completion date.",
+    "preconditions": "Complaint is assessed.",
+    "action_or_input": "PATCH /api/v1/iwd/requests/{id}/ with estimated_cost=8500.00 and required_by='2026-11-20'.",
+    "expected_result": "HTTP 200 OK; estimated cost and required_by updated successfully.",
+    "test_type": "UC Main Flow"
+  },
+  {
+    "test_id": "TC_UC_06",
+    "source_id": "UC-IWD-025 Main Flow",
+    "purpose": "Flag work request as urgent priority.",
+    "preconditions": "Complaint exists.",
+    "action_or_input": "Create or update request with priority='urgent'.",
+    "expected_result": "Work request priority is set to 'urgent' and priority score reflects maximum urgency.",
+    "test_type": "UC Main Flow"
+  },
+  {
+    "test_id": "TC_UC_07",
+    "source_id": "UC-IWD-031 Main Flow",
+    "purpose": "Supervisor reviews and approves low-cost estimate (< Rs. 25,000).",
+    "preconditions": "Complaint is in 'under_review' with estimated_cost=12000.00.",
+    "action_or_input": "POST /api/v1/iwd/requests/{id}/approve/ with assigned_to='eng_maintenance'.",
+    "expected_result": "HTTP 200 OK; status='approved'; assignee assigned.",
+    "test_type": "UC Main Flow"
+  },
+  {
+    "test_id": "TC_UC_08",
+    "source_id": "UC-IWD-031 Alternative A1 (Rejection)",
+    "purpose": "Supervisor rejects estimate with justification note.",
+    "preconditions": "Complaint in 'under_review'.",
+    "action_or_input": "POST /api/v1/iwd/requests/{id}/reject/ with note='Estimate too high for minor repair'.",
+    "expected_result": "HTTP 200 OK; status='rejected'; note recorded in history.",
+    "test_type": "UC Alternative Flow"
+  },
+  {
+    "test_id": "TC_UC_09",
+    "source_id": "UC-IWD-061 Main Flow",
+    "purpose": "Check stock levels and identify available inventory for repair.",
+    "preconditions": "Inventory items exist in database.",
+    "action_or_input": "GET /api/v1/iwd/inventory/.",
+    "expected_result": "HTTP 200 OK; returns items with quantity_available and unit_cost.",
+    "test_type": "UC Main Flow"
+  },
+  {
+    "test_id": "TC_UC_10",
+    "source_id": "UC-IWD-071 Main Flow",
+    "purpose": "Query inventory low-stock alerts to coordinate restocking.",
+    "preconditions": "One item has quantity <= minimum_stock.",
+    "action_or_input": "GET /api/v1/iwd/inventory/low_stock/.",
+    "expected_result": "HTTP 200 OK; returns items where is_low_stock is true.",
+    "test_type": "UC Main Flow"
+  },
+  {
+    "test_id": "TC_UC_11",
+    "source_id": "UC-IWD-081 Main Flow",
+    "purpose": "Manage contractor directory and view accredited vendors.",
+    "preconditions": "Contractors registered in system.",
+    "action_or_input": "GET /api/v1/iwd/contractors/.",
+    "expected_result": "HTTP 200 OK; returns list of active contractors with registration numbers.",
+    "test_type": "UC Main Flow"
+  },
+  {
+    "test_id": "TC_UC_12",
+    "source_id": "UC-IWD-091 Main Flow",
+    "purpose": "Start physical repair execution.",
+    "preconditions": "Complaint in 'approved' status.",
+    "action_or_input": "POST /api/v1/iwd/requests/{id}/start/.",
+    "expected_result": "HTTP 200 OK; status='in_progress'.",
+    "test_type": "UC Main Flow"
+  },
+  {
+    "test_id": "TC_UC_13",
+    "source_id": "UC-IWD-101 Main Flow",
+    "purpose": "Complete repair work and record actual cost.",
+    "preconditions": "Complaint in 'in_progress' status.",
+    "action_or_input": "POST /api/v1/iwd/requests/{id}/complete/ with actual_cost=9200.00.",
+    "expected_result": "HTTP 200 OK; status='completed'; completed_at timestamp set.",
+    "test_type": "UC Main Flow"
+  },
+  {
+    "test_id": "TC_UC_14",
+    "source_id": "UC-IWD-111 Main Flow",
+    "purpose": "Close completed repair ticket following verification.",
+    "preconditions": "Complaint in 'completed' status.",
+    "action_or_input": "POST /api/v1/iwd/requests/{id}/close/ with remarks='Physical inspection satisfactory'.",
+    "expected_result": "HTTP 200 OK; status='closed'.",
+    "test_type": "UC Main Flow"
+  },
+  {
+    "test_id": "TC_UC_15",
+    "source_id": "UC-IWD-151 Main Flow",
+    "purpose": "Examine complete transition audit trail for rejected ticket.",
+    "preconditions": "Complaint transitioned to rejected.",
+    "action_or_input": "GET /api/v1/iwd/requests/{id}/history/.",
+    "expected_result": "HTTP 200 OK; logs show from_status, to_status='rejected', and rejection note.",
+    "test_type": "UC Main Flow"
+  }
+]

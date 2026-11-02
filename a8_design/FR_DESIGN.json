@@ -1,0 +1,155 @@
+[
+  {
+    "test_id": "TC_FR_01",
+    "source_id": "CFR-IWD-01 (AFR-IWD-001, AFR-IWD-006)",
+    "purpose": "Verify authenticated employee can submit a valid maintenance complaint and record is persisted.",
+    "preconditions": "User is authenticated as an institute employee.",
+    "action_or_input": "POST /api/v1/iwd/requests/ with valid title, description, location, category='civil', priority='medium'.",
+    "expected_result": "HTTP 201 Created; complaint record created with status='draft' and requester username set.",
+    "test_type": "Functional / Positive"
+  },
+  {
+    "test_id": "TC_FR_02",
+    "source_id": "CFR-IWD-01 (AFR-IWD-002, AFR-IWD-003, AFR-IWD-004)",
+    "purpose": "Verify complaint submission validates mandatory fields (issue category, location, priority).",
+    "preconditions": "User is authenticated.",
+    "action_or_input": "POST /api/v1/iwd/requests/ with empty title, empty location, and negative estimated cost.",
+    "expected_result": "HTTP 400 Bad Request; validation errors returned for title, location, or cost.",
+    "test_type": "Validation / Negative"
+  },
+  {
+    "test_id": "TC_FR_03",
+    "source_id": "CFR-IWD-02 (AFR-IWD-008)",
+    "purpose": "Verify submitting employee can track status of submitted complaints.",
+    "preconditions": "Complaint exists in the system submitted by user 'emp_01'.",
+    "action_or_input": "GET /api/v1/iwd/requests/ as 'emp_01'.",
+    "expected_result": "HTTP 200 OK; returns list of complaints including the submitted ticket and current status.",
+    "test_type": "Functional / Positive"
+  },
+  {
+    "test_id": "TC_FR_04",
+    "source_id": "CFR-IWD-02 (AFR-IWD-007, AFR-IWD-009)",
+    "purpose": "Verify complaint assignment to an engineer and engineer visibility of assigned complaints.",
+    "preconditions": "Complaint exists in 'submitted' status.",
+    "action_or_input": "Assign complaint to 'eng_civil_01' and GET /api/v1/iwd/requests/ filtering by assigned engineer.",
+    "expected_result": "Assigned engineer field is updated and complaint appears in assigned engineer query.",
+    "test_type": "Functional / Positive"
+  },
+  {
+    "test_id": "TC_FR_05",
+    "source_id": "CFR-IWD-03 (AFR-IWD-010, AFR-IWD-013)",
+    "purpose": "Verify engineer can submit repair estimate covering estimated cost and target completion date.",
+    "preconditions": "Complaint exists and is assigned to engineer.",
+    "action_or_input": "Update work request with estimated_cost=15000 and valid future required_by date.",
+    "expected_result": "Estimated cost and required_by date are updated on the record.",
+    "test_type": "Functional / Positive"
+  },
+  {
+    "test_id": "TC_FR_06",
+    "source_id": "CFR-IWD-04 (AFR-IWD-014, AFR-IWD-015)",
+    "purpose": "Verify estimate cost classification into low-cost band (< Rs. 25,000).",
+    "preconditions": "Work request with estimated_cost=18000 submitted.",
+    "action_or_input": "Check cost band classification logic for estimate below Rs. 25,000.",
+    "expected_result": "Classified as low-cost estimate eligible for administrative review.",
+    "test_type": "Rule / Classification"
+  },
+  {
+    "test_id": "TC_FR_07",
+    "source_id": "CFR-IWD-05 (AFR-IWD-016)",
+    "purpose": "Verify approval of low-cost estimate by authorized supervisor.",
+    "preconditions": "Work request is in 'submitted' and transitioned to 'under_review'.",
+    "action_or_input": "POST /api/v1/iwd/requests/{id}/approve/ with assigned_to='eng_01'.",
+    "expected_result": "HTTP 200 OK; status transitions to 'approved'.",
+    "test_type": "Workflow / Positive"
+  },
+  {
+    "test_id": "TC_FR_08",
+    "source_id": "CFR-IWD-06 (AFR-IWD-019, AFR-IWD-020)",
+    "purpose": "Verify mid-range repair review and escalation handling.",
+    "preconditions": "Work request has estimated_cost=75000 in 'under_review' status.",
+    "action_or_input": "POST /api/v1/iwd/requests/{id}/hold/ with review note 'Referred for committee feasibility review'.",
+    "expected_result": "HTTP 200 OK; status transitions to 'on_hold' with review note logged.",
+    "test_type": "Workflow / Boundary"
+  },
+  {
+    "test_id": "TC_FR_09",
+    "source_id": "CFR-IWD-07 (AFR-IWD-022, AFR-IWD-023)",
+    "purpose": "Verify high-cost project requires Director-level approval authorization threshold.",
+    "preconditions": "Work request has estimated cost exceeding Rs. 1,00,000.",
+    "action_or_input": "Check requires_director_approval(150000).",
+    "expected_result": "Returns True, indicating mandatory Director approval gate.",
+    "test_type": "Rule / Positive"
+  },
+  {
+    "test_id": "TC_FR_10",
+    "source_id": "CFR-IWD-08 (AFR-IWD-024, AFR-IWD-026)",
+    "purpose": "Verify rejected estimate retains rejection reason and supports resubmission.",
+    "preconditions": "Work request in 'submitted' status.",
+    "action_or_input": "POST /api/v1/iwd/requests/{id}/reject/ with note='Exceeds allocated sub-head budget'.",
+    "expected_result": "HTTP 200 OK; status='rejected'; audit log captures rejection note.",
+    "test_type": "Workflow / Negative"
+  },
+  {
+    "test_id": "TC_FR_11",
+    "source_id": "CFR-IWD-09 (AFR-IWD-027, AFR-IWD-028)",
+    "purpose": "Verify maintenance inventory tracking, stock queries, and low stock detection.",
+    "preconditions": "Inventory items exist with quantity below and above minimum stock.",
+    "action_or_input": "GET /api/v1/iwd/inventory/low_stock/.",
+    "expected_result": "HTTP 200 OK; returns only items where quantity_available <= minimum_stock.",
+    "test_type": "Functional / Query"
+  },
+  {
+    "test_id": "TC_FR_12",
+    "source_id": "CFR-IWD-10 (AFR-IWD-032, AFR-IWD-033)",
+    "purpose": "Verify work execution progress tracking from approved to in_progress.",
+    "preconditions": "Work request is in 'approved' status.",
+    "action_or_input": "POST /api/v1/iwd/requests/{id}/start/.",
+    "expected_result": "HTTP 200 OK; status transitions to 'in_progress'.",
+    "test_type": "Workflow / Positive"
+  },
+  {
+    "test_id": "TC_FR_13",
+    "source_id": "CFR-IWD-11 (AFR-IWD-035, AFR-IWD-037)",
+    "purpose": "Verify complete audit trail logging of all state changes and actor usernames.",
+    "preconditions": "Work request underwent draft -> submit -> review transitions.",
+    "action_or_input": "GET /api/v1/iwd/requests/{id}/history/.",
+    "expected_result": "HTTP 200 OK; returns chronological log entries with from_status, to_status, actor_username, and timestamps.",
+    "test_type": "Audit / Verification"
+  },
+  {
+    "test_id": "TC_FR_14",
+    "source_id": "CFR-IWD-12 (AFR-IWD-038, AFR-IWD-039)",
+    "purpose": "Verify completed work order closure and post-completion status lock.",
+    "preconditions": "Work request is in 'completed' status.",
+    "action_or_input": "POST /api/v1/iwd/requests/{id}/close/.",
+    "expected_result": "HTTP 200 OK; status transitions to 'closed'.",
+    "test_type": "Workflow / Positive"
+  },
+  {
+    "test_id": "TC_FR_15",
+    "source_id": "CFR-IWD-13 (AFR-IWD-040, AFR-IWD-041)",
+    "purpose": "Verify recording of actual expenditure upon work completion.",
+    "preconditions": "Work request in 'in_progress' status.",
+    "action_or_input": "POST /api/v1/iwd/requests/{id}/complete/ with actual_cost=14200.00.",
+    "expected_result": "HTTP 200 OK; status='completed' and actual_cost is persisted as 14200.00.",
+    "test_type": "Functional / Positive"
+  },
+  {
+    "test_id": "TC_FR_16",
+    "source_id": "CFR-IWD-16 (AFR-IWD-054, AFR-IWD-056)",
+    "purpose": "Verify accredited contractor directory management and active filter.",
+    "preconditions": "Contractor registry endpoint is available.",
+    "action_or_input": "POST /api/v1/iwd/contractors/ with name, registration number, contact person, phone, email.",
+    "expected_result": "HTTP 201 Created; contractor is saved with is_active=True.",
+    "test_type": "Functional / Positive"
+  },
+  {
+    "test_id": "TC_FR_17",
+    "source_id": "CFR-IWD-16 (AFR-IWD-055, AFR-IWD-057)",
+    "purpose": "Verify disallowance of skipping workflow states (e.g., draft directly to approved).",
+    "preconditions": "Work request is in 'draft' status.",
+    "action_or_input": "POST /api/v1/iwd/requests/{id}/approve/ directly from draft.",
+    "expected_result": "HTTP 400 Bad Request; transition rejected by state machine.",
+    "test_type": "Security / Workflow Constraint"
+  }
+]

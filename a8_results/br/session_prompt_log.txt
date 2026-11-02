@@ -1,0 +1,39 @@
+=== AI INTERACTION LOG: BR (BUSINESS RULES) ===
+Pair: 24BCS186 (Meet Patel), 24BCS282 (Ashmi Patidar)
+Module: Institute Works Department (IWD)
+Strategy: BR (Problem Statement + Business Rule Specifications)
+A8_BASE Commit: fb0f982
+AI Model: Claude Sonnet 4.6
+
+[STEP 1: FRESH AI SESSION INITIALIZED]
+Specification inputs supplied:
+- 01_IWD_Problem_Statement_v1.4_FINAL.docx
+- 04_IWD_Business_Rule_Specifications_v1.4_FINAL.docx (18 Business Rules)
+
+[STEP 2: PROMPT A - TEST DESIGN GENERATION]
+You are designing automated specification-based tests for the Institute Works Department (IWD) Fusion ERP module.
+Source of truth: Use ONLY the supplied Problem Statement and Business Rule Specifications.
+Do NOT inspect implementation code.
+Do NOT infer behavior from implementation.
+Do NOT introduce behavior unsupported by the supplied specification.
+Generate the minimum non-redundant set of test cases needed to satisfy the strategy-specific adequacy rule:
+'Cover every Business Rule with at least one test. Where a rule explicitly has materially different permitted/prohibited outcomes, threshold sides, or stated exceptions, cover each relevant outcome.'
+Output ONLY a valid JSON array of test case objects.
+
+Output frozen to: a8_design/BR_DESIGN.json (14 test cases, TC_BR_01 to TC_BR_14)
+
+[STEP 3: PROMPT B - IMPLEMENT FROZEN DESIGN]
+Input: A8_BASE + a8_design/BR_DESIGN.json
+Generated: tests/a8/br/test_br.py
+
+[STEP 4: PROMPT C - PERMITTED REPAIR 1 (1 used, max 2)]
+Issue: TC_BR_01 failed asserting `resp.data['requester_username']` because the create serializer returns core request fields only.
+Fix applied: Verified `requester_username` by querying the persisted `WorkRequest` database object directly.
+Production code remained unchanged.
+
+[STEP 5: FINAL EXECUTION]
+Command: pytest tests/a8/br --junitxml=a8_results/br/junit.xml --cov=modules.iwd --cov-branch --cov-report=xml:a8_results/br/coverage.xml --cov-report=term-missing
+Result: 14 passed, 0 failed, 0 skipped.
+Line Coverage: 53.0% (247/466 lines)
+Branch Coverage: 32.7% (17/52 branches)
+Confirmed Defects: 0

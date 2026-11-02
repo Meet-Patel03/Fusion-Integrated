@@ -1,0 +1,39 @@
+=== AI INTERACTION LOG: UC (USE CASES) ===
+Pair: 24BCS186 (Meet Patel), 24BCS282 (Ashmi Patidar)
+Module: Institute Works Department (IWD)
+Strategy: UC (Problem Statement + Use Case Specifications)
+A8_BASE Commit: fb0f982
+AI Model: Claude Sonnet 4.6
+
+[STEP 1: FRESH AI SESSION INITIALIZED]
+Specification inputs supplied:
+- 01_IWD_Problem_Statement_v1.4_FINAL.docx
+- 03_IWD_Use_Case_Specifications_v1.4_FINAL.docx (23 Use Cases)
+
+[STEP 2: PROMPT A - TEST DESIGN GENERATION]
+You are designing automated specification-based tests for the Institute Works Department (IWD) Fusion ERP module.
+Source of truth: Use ONLY the supplied Problem Statement and Use Case Specifications.
+Do NOT inspect implementation code.
+Do NOT infer behavior from implementation.
+Do NOT introduce behavior unsupported by the supplied specification.
+Generate the minimum non-redundant set of test cases needed to satisfy the strategy-specific adequacy rule:
+'Cover the main success flow of every Use Case and every explicitly specified alternative/exception flow with at least one test. Do not invent additional flows.'
+Output ONLY a valid JSON array of test case objects.
+
+Output frozen to: a8_design/UC_DESIGN.json (15 test cases, TC_UC_01 to TC_UC_15)
+
+[STEP 3: PROMPT B - IMPLEMENT FROZEN DESIGN]
+Input: A8_BASE + a8_design/UC_DESIGN.json
+Generated: tests/a8/uc/test_uc.py
+
+[STEP 4: PROMPT C - PERMITTED REPAIR 1 (1 used, max 2)]
+Issue: TC_UC_09 and TC_UC_11 failed due to DRF pagination dict response on inventory and contractor list endpoints.
+Fix applied: Handled paginated list response for both list queries in test setup.
+Production code remained unchanged.
+
+[STEP 5: FINAL EXECUTION]
+Command: pytest tests/a8/uc --junitxml=a8_results/uc/junit.xml --cov=modules.iwd --cov-branch --cov-report=xml:a8_results/uc/coverage.xml --cov-report=term-missing
+Result: 15 passed, 0 failed, 0 skipped.
+Line Coverage: 55.2% (257/466 lines)
+Branch Coverage: 32.7% (17/52 branches)
+Confirmed Defects: 0

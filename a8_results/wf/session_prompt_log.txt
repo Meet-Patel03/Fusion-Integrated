@@ -1,0 +1,37 @@
+=== AI INTERACTION LOG: WF (WORKFLOWS) ===
+Pair: 24BCS186 (Meet Patel), 24BCS282 (Ashmi Patidar)
+Module: Institute Works Department (IWD)
+Strategy: WF (Problem Statement + Workflow Specifications)
+A8_BASE Commit: fb0f982
+AI Model: Claude Sonnet 4.6
+
+[STEP 1: FRESH AI SESSION INITIALIZED]
+Specification inputs supplied:
+- 01_IWD_Problem_Statement_v1.4_FINAL.docx
+- 05_IWD_Workflow_Specifications_v1.4_FINAL.docx (15 Business Workflows, 4 Complaint Workflows)
+
+[STEP 2: PROMPT A - TEST DESIGN GENERATION]
+You are designing automated specification-based tests for the Institute Works Department (IWD) Fusion ERP module.
+Source of truth: Use ONLY the supplied Problem Statement and Workflow Specifications.
+Do NOT inspect implementation code.
+Do NOT infer behavior from implementation.
+Do NOT introduce behavior unsupported by the supplied specification.
+Generate the minimum non-redundant set of test cases needed to satisfy the strategy-specific adequacy rule:
+'Cover every explicitly specified distinct workflow path/decision outcome. Ensure every important stated transition is exercised at least once; do not enumerate unsupported combinations.'
+Output ONLY a valid JSON array of test case objects.
+
+Output frozen to: a8_design/WF_DESIGN.json (10 test cases, TC_WF_01 to TC_WF_10)
+
+[STEP 3: PROMPT B - IMPLEMENT FROZEN DESIGN]
+Input: A8_BASE + a8_design/WF_DESIGN.json
+Generated: tests/a8/wf/test_wf.py
+
+[STEP 4: REPAIRS]
+None required. All 10 tests passed on first execution (0 repairs used).
+
+[STEP 5: FINAL EXECUTION]
+Command: pytest tests/a8/wf --junitxml=a8_results/wf/junit.xml --cov=modules.iwd --cov-branch --cov-report=xml:a8_results/wf/coverage.xml --cov-report=term-missing
+Result: 10 passed, 0 failed, 0 skipped.
+Line Coverage: 52.4% (244/466 lines)
+Branch Coverage: 26.9% (14/52 branches)
+Confirmed Defects: 0

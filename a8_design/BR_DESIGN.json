@@ -1,0 +1,128 @@
+[
+  {
+    "test_id": "TC_BR_01",
+    "source_id": "BR-IWD-001 - Active-role authorization",
+    "purpose": "Ensure work request creation validates requester identity and requires valid user.",
+    "preconditions": "API receives work request submission.",
+    "action_or_input": "POST /api/v1/iwd/requests/ with X-User header 'faculty_01'.",
+    "expected_result": "Requester username is recorded as 'faculty_01' on created ticket.",
+    "test_type": "Authorization / Role Check"
+  },
+  {
+    "test_id": "TC_BR_02",
+    "source_id": "BR-IWD-002 - Automatic engineer assignment",
+    "purpose": "Verify assigned_to can be designated during triage or approval.",
+    "preconditions": "Request submitted.",
+    "action_or_input": "Approve request passing assigned_to='eng_electrical_1'.",
+    "expected_result": "assigned_to field is populated with designated engineer.",
+    "test_type": "Business Rule / Assignment"
+  },
+  {
+    "test_id": "TC_BR_03",
+    "source_id": "BR-IWD-003 - Cost-band routing (< Rs. 25,000 low-cost band)",
+    "purpose": "Verify low-cost threshold check (< Rs. 25,000) for standard maintenance.",
+    "preconditions": "Work request cost evaluation.",
+    "action_or_input": "Check requires_budget_allocation(WorkCategory.REPAIR, 24000).",
+    "expected_result": "Returns False; low-cost repairs do not require formal capital budget allocation.",
+    "test_type": "Business Rule / Cost Band"
+  },
+  {
+    "test_id": "TC_BR_04",
+    "source_id": "BR-IWD-003 - Cost-band routing (> Rs. 1,00,000 high-cost threshold)",
+    "purpose": "Verify high-cost threshold check (> Rs. 1,00,000) requiring Director authorization.",
+    "preconditions": "Estimate exceeds Rs. 1,00,000.",
+    "action_or_input": "Check requires_director_approval(125000.00).",
+    "expected_result": "Returns True; Director approval required.",
+    "test_type": "Business Rule / Threshold Upper Side"
+  },
+  {
+    "test_id": "TC_BR_05",
+    "source_id": "BR-IWD-003 - Cost-band routing (<= Rs. 1,00,000 boundary)",
+    "purpose": "Verify estimate <= Rs. 1,00,000 does not require Director escalation.",
+    "preconditions": "Estimate is exactly Rs. 1,00,000.",
+    "action_or_input": "Check requires_director_approval(100000.00).",
+    "expected_result": "Returns False; within departmental approval authority.",
+    "test_type": "Business Rule / Threshold Lower Side"
+  },
+  {
+    "test_id": "TC_BR_06",
+    "source_id": "BR-IWD-007 - High-cost bidding authorization (> Rs. 5,00,000 capital budget rule)",
+    "purpose": "Verify projects > Rs. 5,00,000 require formal budget allocation.",
+    "preconditions": "Project estimated at Rs. 6,00,000.",
+    "action_or_input": "Check requires_budget_allocation(WorkCategory.CIVIL, 600000.00).",
+    "expected_result": "Returns True; formal capital budget allocation mandatory.",
+    "test_type": "Business Rule / Financial Policy"
+  },
+  {
+    "test_id": "TC_BR_07",
+    "source_id": "BR-IWD-007 - New construction budget rule",
+    "purpose": "Verify new construction projects always require budget allocation regardless of cost.",
+    "preconditions": "Category is NEW_CONSTRUCTION.",
+    "action_or_input": "Check requires_budget_allocation(WorkCategory.NEW_CONSTRUCTION, 50000.00).",
+    "expected_result": "Returns True; any new construction requires formal budget allocation.",
+    "test_type": "Business Rule / Category Policy"
+  },
+  {
+    "test_id": "TC_BR_08",
+    "source_id": "BR-IWD-009 - Rejection reason and resubmission",
+    "purpose": "Verify rejection transitions cleanly and records mandatory reason note.",
+    "preconditions": "Work request in 'under_review' status.",
+    "action_or_input": "POST /api/v1/iwd/requests/{id}/reject/ with note='Scope unclear; revise specification'.",
+    "expected_result": "Status is 'rejected'; rejection note is saved in audit log.",
+    "test_type": "Business Rule / Rejection"
+  },
+  {
+    "test_id": "TC_BR_09",
+    "source_id": "BR-IWD-010 - Inventory low-stock rule",
+    "purpose": "Verify inventory stock triggers low-stock indicator when quantity <= minimum_stock.",
+    "preconditions": "InventoryItem with quantity_available=5, minimum_stock=10.",
+    "action_or_input": "Evaluate item.is_low_stock property.",
+    "expected_result": "Returns True; low stock condition recognized.",
+    "test_type": "Business Rule / Inventory"
+  },
+  {
+    "test_id": "TC_BR_10",
+    "source_id": "BR-IWD-010 - Inventory adequate stock rule",
+    "purpose": "Verify inventory item does not trigger alert when quantity > minimum_stock.",
+    "preconditions": "InventoryItem with quantity_available=25, minimum_stock=10.",
+    "action_or_input": "Evaluate item.is_low_stock property.",
+    "expected_result": "Returns False; stock is adequate.",
+    "test_type": "Business Rule / Inventory"
+  },
+  {
+    "test_id": "TC_BR_11",
+    "source_id": "BR-IWD-012 - Urgent priority scoring acceleration",
+    "purpose": "Verify urgent priority tickets receive accelerated priority score.",
+    "preconditions": "Priority set to URGENT.",
+    "action_or_input": "Compute priority score for Priority.URGENT vs Priority.LOW.",
+    "expected_result": "Score for URGENT (4) is strictly greater than LOW (1).",
+    "test_type": "Business Rule / Scoring"
+  },
+  {
+    "test_id": "TC_BR_12",
+    "source_id": "BR-IWD-013 - Audit logging of decisions",
+    "purpose": "Verify every state change creates an audit log entry in iwd_work_request_log.",
+    "preconditions": "Work request is transitioned from draft to submitted.",
+    "action_or_input": "Count logs related to work request after submit action.",
+    "expected_result": "Log count increases and captures transition from 'draft' to 'submitted'.",
+    "test_type": "Business Rule / Auditability"
+  },
+  {
+    "test_id": "TC_BR_13",
+    "source_id": "BR-IWD-014 - State transition legality validation",
+    "purpose": "Verify illegal transition throws IWDDomainError (cannot jump from submitted to completed).",
+    "preconditions": "Request is in 'submitted' status.",
+    "action_or_input": "validate_transition(RequestStatus.SUBMITTED, RequestStatus.COMPLETED).",
+    "expected_result": "Raises IWDDomainError stating transition is illegal.",
+    "test_type": "Business Rule / State Machine"
+  },
+  {
+    "test_id": "TC_BR_14",
+    "source_id": "BR-IWD-014 - Closed state is terminal",
+    "purpose": "Verify closed state has no legal outgoing transitions.",
+    "preconditions": "Request is in 'closed' status.",
+    "action_or_input": "Check can_transition(RequestStatus.CLOSED, target) for all targets.",
+    "expected_result": "Returns False for every possible target state.",
+    "test_type": "Business Rule / Terminal State"
+  }
+]

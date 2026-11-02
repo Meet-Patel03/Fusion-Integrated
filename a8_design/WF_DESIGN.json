@@ -1,0 +1,92 @@
+[
+  {
+    "test_id": "TC_WF_01",
+    "source_id": "BW-IWD-01 - Complaint Intake and Assessment Path",
+    "purpose": "Verify workflow path from initial complaint creation through submission to under review.",
+    "preconditions": "Draft complaint exists.",
+    "action_or_input": "Execute sequential transition: draft -> submit -> review.",
+    "expected_result": "Each step succeeds; submitted_at timestamp recorded; final status is 'under_review'.",
+    "test_type": "Workflow / Sequential Progression"
+  },
+  {
+    "test_id": "TC_WF_02",
+    "source_id": "BW-IWD-02 - Low-Cost Estimate Approval Path",
+    "purpose": "Verify complete low-cost estimate approval path ending in approved status.",
+    "preconditions": "Complaint in 'under_review' with low-cost estimate.",
+    "action_or_input": "POST /api/v1/iwd/requests/{id}/approve/.",
+    "expected_result": "Status transitions to 'approved'; audit log records approval.",
+    "test_type": "Workflow / Approval Path"
+  },
+  {
+    "test_id": "TC_WF_03",
+    "source_id": "BW-IWD-02 / BW-IWD-12 - Rejected Low-Cost Estimate Path",
+    "purpose": "Verify rejection path for low-cost estimate.",
+    "preconditions": "Complaint in 'under_review'.",
+    "action_or_input": "POST /api/v1/iwd/requests/{id}/reject/ with rejection note.",
+    "expected_result": "Status transitions to 'rejected'; note preserved in audit trail.",
+    "test_type": "Workflow / Rejection Path"
+  },
+  {
+    "test_id": "TC_WF_04",
+    "source_id": "BW-IWD-03 / BW-IWD-04 - Hold for Review Path",
+    "purpose": "Verify workflow hold path when committee review or additional clarification is needed.",
+    "preconditions": "Complaint in 'under_review'.",
+    "action_or_input": "POST /api/v1/iwd/requests/{id}/hold/ with reason 'Awaiting material sample tests'.",
+    "expected_result": "Status transitions to 'on_hold'; workflow is paused.",
+    "test_type": "Workflow / Pause Path"
+  },
+  {
+    "test_id": "TC_WF_05",
+    "source_id": "BW-IWD-03 - Resume from Hold Path",
+    "purpose": "Verify workflow resumption from on_hold to in_progress or under_review.",
+    "preconditions": "Complaint in 'on_hold' status.",
+    "action_or_input": "Transition from 'on_hold' to 'in_progress'.",
+    "expected_result": "Transition is permitted by state machine; status becomes 'in_progress'.",
+    "test_type": "Workflow / Resume Path"
+  },
+  {
+    "test_id": "TC_WF_06",
+    "source_id": "BW-IWD-06 - Stock Available - Material Issue Workflow",
+    "purpose": "Verify inventory deduction / tracking during material issue.",
+    "preconditions": "InventoryItem exists with quantity=50.",
+    "action_or_input": "Reduce quantity from 50 to 35 upon work commencement.",
+    "expected_result": "Updated quantity is 35; remaining stock verified.",
+    "test_type": "Workflow / Inventory Integration"
+  },
+  {
+    "test_id": "TC_WF_07",
+    "source_id": "BW-IWD-09 - Work Execution and Verification Success Path",
+    "purpose": "Verify end-to-end execution path: approved -> in_progress -> completed -> closed.",
+    "preconditions": "Complaint is 'approved'.",
+    "action_or_input": "Execute /start/ -> /complete/ with actual cost -> /close/.",
+    "expected_result": "Successive HTTP 200 responses; status reaches 'closed'; actual cost and timestamps persisted.",
+    "test_type": "Workflow / Happy Path Traversal"
+  },
+  {
+    "test_id": "TC_WF_08",
+    "source_id": "CW-IWD-01 - Estimate Approval Routing Guard Check",
+    "purpose": "Verify state machine prevents completing a request that has not been approved.",
+    "preconditions": "Complaint is in 'under_review'.",
+    "action_or_input": "POST /api/v1/iwd/requests/{id}/complete/ directly from under_review.",
+    "expected_result": "HTTP 400 Bad Request; state machine guard prohibits transition.",
+    "test_type": "Workflow / Guard Violation"
+  },
+  {
+    "test_id": "TC_WF_09",
+    "source_id": "CW-IWD-03 - Work Completion and Verification Boundary",
+    "purpose": "Verify closing a work request permanently terminates its lifecycle.",
+    "preconditions": "Complaint is in 'closed' status.",
+    "action_or_input": "Attempt to trigger /start/ or /approve/ on closed ticket.",
+    "expected_result": "HTTP 400 Bad Request; terminal state cannot transition.",
+    "test_type": "Workflow / Boundary Condition"
+  },
+  {
+    "test_id": "TC_WF_10",
+    "source_id": "BW-IWD-15 - Urgent Fast-Track Review Path",
+    "purpose": "Verify fast-track urgency path prioritizing urgent maintenance.",
+    "preconditions": "Work request with priority='urgent' and deadline in 24 hours.",
+    "action_or_input": "Evaluate compute_priority_score(Priority.URGENT, tomorrow).",
+    "expected_result": "Priority score is 8 (maximum score combining base urgent 4 + lead-time boost 4).",
+    "test_type": "Workflow / Urgent Fast Track"
+  }
+]
