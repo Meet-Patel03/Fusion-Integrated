@@ -1,4 +1,4 @@
-"""Automated test suite for FR Strategy (CFR + AFR).
+"""Automated test suite for FR Strategy (Functional Requirements).
 Generated from frozen design: a8_design/FR_DESIGN.json.
 Target module: modules.iwd
 """
@@ -7,12 +7,14 @@ import pytest
 from rest_framework.test import APIClient
 
 from modules.iwd.domain.rules import (
+    IWDDomainError,
     Priority,
     RequestStatus,
     WorkCategory,
-    WorkRequestDraft,
+    can_transition,
+    requires_budget_allocation,
     requires_director_approval,
-    validate_work_request,
+    validate_transition,
 )
 from modules.iwd.models import Contractor, InventoryItem, WorkRequest, WorkRequestLog
 
@@ -25,38 +27,37 @@ def api():
 @pytest.mark.django_db
 def test_tc_fr_01_submit_valid_complaint(api):
     """TC_FR_01 | Source: CFR-IWD-01 (AFR-IWD-001, AFR-IWD-006)
-    Verify authenticated employee can submit a valid maintenance complaint and record is persisted.
+    Verify authenticated employee can submit a valid maintenance complaint.
     """
     payload = {
-        "title": "Fix water leakage in restroom",
-        "description": "Pipe joint is leaking continuously in 2nd floor restroom.",
-        "location": "Core Lab 102",
+        "title": "Broken window pane in faculty office",
+        "description": "Glass pane cracked due to strong winds, needs replacement.",
+        "location": "Faculty Cabin 104",
         "category": "civil",
         "priority": "medium",
         "estimated_cost": "1500.00",
     }
-    resp = api.post("/api/v1/iwd/requests/", payload, format="json", HTTP_X_USER="faculty_01")
+    resp = api.post("/api/v1/iwd/requests/", payload, format="json", HTTP_X_USER="faculty_user_1")
     assert resp.status_code == 201
     assert resp.data["title"] == payload["title"]
     assert resp.data["status"] == "draft"
-    req_obj = WorkRequest.objects.get(pk=resp.data["id"])
-    assert req_obj.requester_username == "faculty_01"
+    wr_obj = WorkRequest.objects.get(pk=resp.data["id"])
+    assert wr_obj.requester_username == "faculty_user_1"
 
 
 @pytest.mark.django_db
 def test_tc_fr_02_validation_mandatory_fields(api):
     """TC_FR_02 | Source: CFR-IWD-01 (AFR-IWD-002, AFR-IWD-003, AFR-IWD-004)
-    Verify complaint submission validates mandatory fields (issue category, location, priority).
+    Verify complaint submission validates mandatory fields.
     """
     payload = {
-        "title": "Fix",  # Less than 5 chars
-        "description": "Short",  # Less than 10 chars
+        "title": "",
+        "description": "",
         "location": "",
         "category": "civil",
         "priority": "medium",
-        "estimated_cost": "-500.00",  # Negative cost
     }
-    resp = api.post("/api/v1/iwd/requests/", payload, format="json", HTTP_X_USER="faculty_01")
+    resp = api.post("/api/v1/iwd/requests/", payload, format="json", HTTP_X_USER="emp_02")
     assert resp.status_code == 400
 
 
@@ -66,15 +67,15 @@ def test_tc_fr_03_track_submitted_complaint_status(api):
     Verify submitting employee can track status of submitted complaints.
     """
     wr = WorkRequest.objects.create(
-        title="Fluorescent bulb replacement",
-        description="Flickering bulb in tutorial room 3.",
-        location="Tutorial Block Room 3",
+        title="Ceiling fan not working",
+        description="Fan motor hums but blades do not rotate in lecture hall.",
+        location="L-201",
         category="electrical",
-        priority="low",
-        status="submitted",
-        requester_username="emp_01",
+        priority="high",
+        status="draft",
+        requester_username="prof_sharma",
     )
-    resp = api.get("/api/v1/iwd/requests/", HTTP_X_USER="emp_01")
+    resp = api.get("/api/v1/iwd/requests/", HTTP_X_USER="prof_sharma")
     assert resp.status_code == 200
     results = resp.data.get("results", resp.data) if isinstance(resp.data, dict) else resp.data
     ids = [item["id"] for item in results]
@@ -84,159 +85,170 @@ def test_tc_fr_03_track_submitted_complaint_status(api):
 @pytest.mark.django_db
 def test_tc_fr_04_complaint_assignment_visibility(api):
     """TC_FR_04 | Source: CFR-IWD-02 (AFR-IWD-007, AFR-IWD-009)
-    Verify complaint assignment to an engineer and engineer visibility.
+    Verify complaint assignment to an engineer.
     """
     wr = WorkRequest.objects.create(
-        title="Faulty switchboard repair",
-        description="Switch sparking in mechanical workshop.",
-        location="Mechanical Workshop Bay 2",
-        category="electrical",
-        priority="high",
+        title="Water cooler compressor leak",
+        description="Refrigerant gas leak observed near mess cooler unit.",
+        location="Hostel 2 Mess",
+        category="repair",
+        priority="urgent",
         status="submitted",
-        requester_username="emp_02",
-        assigned_to="eng_civil_01",
+        requester_username="warden_h2",
     )
-    assert wr.assigned_to == "eng_civil_01"
-    fetched = WorkRequest.objects.filter(assigned_to="eng_civil_01")
-    assert fetched.filter(id=wr.id).exists()
+    api.post(f"/api/v1/iwd/requests/{wr.id}/review/", HTTP_X_USER="eng_civil_1")
+    resp = api.post(f"/api/v1/iwd/requests/{wr.id}/approve/", {
+        "assigned_to": "eng_civil_1"
+    }, format="json", HTTP_X_USER="supervisor_01")
+    assert resp.status_code == 200
+    wr.refresh_from_db()
+    assert wr.assigned_to == "eng_civil_1"
+    assert wr.status == "approved"
 
 
 @pytest.mark.django_db
 def test_tc_fr_05_engineer_submit_estimate(api):
-    """TC_FR_05 | Source: CFR-IWD-03 (AFR-IWD-010, AFR-IWD-013)
-    Verify engineer can submit repair estimate covering estimated cost and target completion date.
+    """TC_FR_05 | Source: CFR-IWD-03 (AFR-IWD-010, AFR-IWD-011)
+    Verify engineer prepares and records estimated repair cost.
     """
     wr = WorkRequest.objects.create(
-        title="Wall plaster repair",
-        description="Damaged plaster in corridor after heavy rains.",
-        location="Corridor Block B",
+        title="Water seepage in computer lab",
+        description="Seepage along eastern exterior wall affecting power conduits.",
+        location="Computer Center Ground Floor",
         category="civil",
-        priority="medium",
-        status="submitted",
-        requester_username="emp_03",
+        priority="high",
+        status="under_review",
+        requester_username="cc_incharge",
     )
-    target_date = (date.today() + timedelta(days=14)).isoformat()
     resp = api.patch(f"/api/v1/iwd/requests/{wr.id}/", {
-        "estimated_cost": "15000.00",
-        "required_by": target_date
-    }, format="json", HTTP_X_USER="eng_civil_01")
+        "estimated_cost": "32500.00"
+    }, format="json", HTTP_X_USER="eng_civil_1")
     assert resp.status_code == 200
     wr.refresh_from_db()
-    assert float(wr.estimated_cost) == 15000.00
-    assert str(wr.required_by) == target_date
+    assert float(wr.estimated_cost) == 32500.00
 
 
-@pytest.mark.django_db
 def test_tc_fr_06_cost_band_classification():
     """TC_FR_06 | Source: CFR-IWD-04 (AFR-IWD-014, AFR-IWD-015)
-    Verify estimate cost classification into low-cost band (< Rs. 25,000).
+    Verify estimate cost classification: mid-range estimate <= Rs. 2.5 Lakh does NOT require Director approval.
     """
-    estimate = 18000.00
-    is_low_cost = (estimate < 25000.00)
-    assert is_low_cost is True
-    assert not requires_director_approval(estimate)
+    # Under CFR-IWD-04 / Table 0 PS 4.1: Mid-cost band is Rs. 25,000 to Rs. 2.5 Lakh (approved by Dept Head).
+    # Director approval is required ONLY for high-cost (> Rs. 2.5 Lakh).
+    estimate = 180000.00
+    assert requires_director_approval(estimate) is False
 
 
 @pytest.mark.django_db
 def test_tc_fr_07_low_cost_approval_workflow(api):
-    """TC_FR_07 | Source: CFR-IWD-05 (AFR-IWD-016)
-    Verify approval of low-cost estimate by authorized supervisor.
+    """TC_FR_07 | Source: CFR-IWD-05 (AFR-IWD-016, AFR-IWD-017)
+    Verify IWD Admin / supervisor approval of low-cost estimate.
     """
     wr = WorkRequest.objects.create(
-        title="Ceiling fan rewinding",
-        description="Motor burnt out; rewinding needed.",
-        location="Faculty Office 10",
+        title="Replace burnt tube light ballasts",
+        description="Four electronic ballasts burnt out in corridor lighting fixture.",
+        location="Admin Block 1st Floor",
         category="electrical",
-        priority="medium",
+        priority="low",
         status="under_review",
         requester_username="emp_04",
-        estimated_cost=3200.00,
+        estimated_cost=4200.00,
     )
-    resp = api.post(f"/api/v1/iwd/requests/{wr.id}/approve/", {
-        "assigned_to": "eng_electrical_1",
-        "note": "Approved by IWD supervisor"
-    }, format="json", HTTP_X_USER="supervisor")
+    resp = api.post(f"/api/v1/iwd/requests/{wr.id}/approve/", HTTP_X_USER="iwd_admin")
     assert resp.status_code == 200
-    assert resp.data["status"] == "approved"
     wr.refresh_from_db()
     assert wr.status == "approved"
-    assert wr.assigned_to == "eng_electrical_1"
 
 
 @pytest.mark.django_db
 def test_tc_fr_08_mid_range_hold_review(api):
     """TC_FR_08 | Source: CFR-IWD-06 (AFR-IWD-019, AFR-IWD-020)
-    Verify mid-range repair review and escalation handling.
+    Verify putting request on hold during committee necessity/feasibility review.
     """
     wr = WorkRequest.objects.create(
-        title="Rewiring of entire laboratory floor",
-        description="Complex rewiring required across multiple benches.",
-        location="CAD Lab Block C",
-        category="electrical",
-        priority="high",
+        title="Corridor tiling repair",
+        description="Damaged tiles in main corridor.",
+        location="Corridor Block B",
+        category="civil",
+        priority="medium",
         status="under_review",
         requester_username="emp_05",
         estimated_cost=75000.00,
     )
     resp = api.post(f"/api/v1/iwd/requests/{wr.id}/hold/", {
-        "note": "Referred for committee feasibility review"
-    }, format="json", HTTP_X_USER="supervisor")
+        "note": "Referred to building works committee for structural assessment."
+    }, format="json", HTTP_X_USER="dept_head")
     assert resp.status_code == 200
-    assert resp.data["status"] == "on_hold"
+    wr.refresh_from_db()
+    assert wr.status == "on_hold"
 
 
 @pytest.mark.django_db
-def test_tc_fr_09_high_cost_director_threshold():
-    """TC_FR_09 | Source: CFR-IWD-07 (AFR-IWD-022, AFR-IWD-023)
-    Verify high-cost project requires Director-level approval authorization threshold.
+def test_tc_fr_09_high_cost_director_threshold(api):
+    """TC_FR_09 | Source: CFR-IWD-09 (AFR-IWD-029, AFR-IWD-030)
+    Verify maintenance material allocation validates stock availability and rejects when depleted.
     """
-    assert requires_director_approval(150000.00) is True
-    assert requires_director_approval(80000.00) is False
+    item = InventoryItem.objects.create(
+        name="Cement Bag 50kg",
+        unit="bags",
+        quantity_available=0.00,
+        unit_cost=380.00,
+        minimum_stock=10.00,
+    )
+    wr = WorkRequest.objects.create(
+        title="Floor patching",
+        description="Patch broken concrete floor.",
+        location="Workshop Floor",
+        category="civil",
+        priority="medium",
+        status="in_progress",
+        requester_username="emp_10",
+    )
+    # Under CFR-IWD-09, material allocation requires stock verification
+    resp = api.post(f"/api/v1/iwd/requests/{wr.id}/allocate_material/", {"item_id": item.id, "quantity": 5})
+    assert resp.status_code == 400
 
 
 @pytest.mark.django_db
 def test_tc_fr_10_rejected_request_retains_reason(api):
-    """TC_FR_10 | Source: CFR-IWD-08 (AFR-IWD-024, AFR-IWD-026)
-    Verify rejected estimate retains rejection reason and supports resubmission.
+    """TC_FR_10 | Source: CFR-IWD-08 (AFR-IWD-026, AFR-IWD-027)
+    Verify rejection of request retains reason in audit history.
     """
     wr = WorkRequest.objects.create(
-        title="Granite tiling replacement",
-        description="Cosmetic replacement of corridor tiles.",
-        location="Main Building Entrance",
-        category="civil",
+        title="Personal AC installation in private quarters",
+        description="Install AC unit using departmental maintenance funds.",
+        location="Quarter 12B",
+        category="electrical",
         priority="low",
-        status="submitted",
+        status="under_review",
         requester_username="emp_06",
+        estimated_cost=45000.00,
     )
-    rejection_reason = "Exceeds allocated sub-head budget"
+    reason = "Personal residential enhancements not eligible for institutional maintenance."
     resp = api.post(f"/api/v1/iwd/requests/{wr.id}/reject/", {
-        "note": rejection_reason
-    }, format="json", HTTP_X_USER="supervisor")
+        "note": reason
+    }, format="json", HTTP_X_USER="dept_head")
     assert resp.status_code == 200
-    assert resp.data["status"] == "rejected"
     wr.refresh_from_db()
     assert wr.status == "rejected"
-    log = wr.logs.filter(to_status="rejected").first()
-    assert log is not None
-    assert rejection_reason in log.note
+    assert wr.logs.filter(to_status="rejected", note=reason).exists()
 
 
 @pytest.mark.django_db
 def test_tc_fr_11_inventory_low_stock_query(api):
-    """TC_FR_11 | Source: CFR-IWD-09 (AFR-IWD-027, AFR-IWD-028)
-    Verify maintenance inventory tracking, stock queries, and low stock detection.
+    """TC_FR_11 | Source: CFR-IWD-09 (AFR-IWD-028, AFR-IWD-031)
+    Verify inventory visibility and low-stock querying for maintenance supplies.
     """
     InventoryItem.objects.create(
         name="PVC Pipe 1 inch",
         unit="meters",
-        quantity_available=4.00,
+        quantity_available=5.00,
         unit_cost=120.00,
-        minimum_stock=10.00,
+        minimum_stock=20.00,
     )
     InventoryItem.objects.create(
         name="LED Tube Light 20W",
         unit="pieces",
-        quantity_available=100.00,
+        quantity_available=50.00,
         unit_cost=250.00,
         minimum_stock=20.00,
     )
@@ -250,132 +262,119 @@ def test_tc_fr_11_inventory_low_stock_query(api):
 @pytest.mark.django_db
 def test_tc_fr_12_work_start_progression(api):
     """TC_FR_12 | Source: CFR-IWD-10 (AFR-IWD-032, AFR-IWD-033)
-    Verify work execution progress tracking from approved to in_progress.
+    Verify transition of approved work order to in_progress execution.
     """
     wr = WorkRequest.objects.create(
-        title="Window mesh installation",
-        description="Install anti-mosquito mesh on ground floor.",
-        location="Hostel 4 Ground Floor",
-        category="carpentry",
+        title="Restroom flush cistern repair",
+        description="Replace dual-flush valve assembly.",
+        location="Admin Ground Floor Restroom",
+        category="plumbing",
         priority="medium",
         status="approved",
         requester_username="emp_07",
     )
-    resp = api.post(f"/api/v1/iwd/requests/{wr.id}/start/", HTTP_X_USER="engineer")
+    resp = api.post(f"/api/v1/iwd/requests/{wr.id}/start/", HTTP_X_USER="eng_plumbing_1")
     assert resp.status_code == 200
-    assert resp.data["status"] == "in_progress"
     wr.refresh_from_db()
     assert wr.status == "in_progress"
 
 
 @pytest.mark.django_db
 def test_tc_fr_13_audit_trail_logging(api):
-    """TC_FR_13 | Source: CFR-IWD-11 (AFR-IWD-035, AFR-IWD-037)
-    Verify complete audit trail logging of all state changes and actor usernames.
+    """TC_FR_13 | Source: CFR-IWD-11 (AFR-IWD-036, AFR-IWD-037)
+    Verify immutable audit log created on every status progression.
     """
     wr = WorkRequest.objects.create(
-        title="Roof waterproof inspection",
-        description="Inspect seepage in terrace.",
-        location="Library Terrace",
+        title="Roof leak over server rack",
+        description="Rainwater dripping near rack 3.",
+        location="Server Room 101",
         category="civil",
-        priority="medium",
+        priority="urgent",
         status="draft",
-        requester_username="emp_08",
+        requester_username="sysadmin",
     )
-    api.post(f"/api/v1/iwd/requests/{wr.id}/submit/", HTTP_X_USER="emp_08")
-    api.post(f"/api/v1/iwd/requests/{wr.id}/review/", HTTP_X_USER="engineer_lead")
-
-    resp = api.get(f"/api/v1/iwd/requests/{wr.id}/history/")
-    assert resp.status_code == 200
-    logs = resp.data
-    statuses = [l["to_status"] for l in logs]
-    actors = [l["actor_username"] for l in logs]
-    assert "submitted" in statuses
-    assert "under_review" in statuses
-    assert "engineer_lead" in actors
+    log_count_before = wr.logs.count()
+    api.post(f"/api/v1/iwd/requests/{wr.id}/submit/", HTTP_X_USER="sysadmin")
+    assert wr.logs.count() == log_count_before + 1
+    latest_log = wr.logs.latest("changed_at")
+    assert latest_log.to_status == "submitted"
+    assert latest_log.actor_username == "sysadmin"
 
 
 @pytest.mark.django_db
 def test_tc_fr_14_work_closure_transition(api):
-    """TC_FR_14 | Source: CFR-IWD-12 (AFR-IWD-038, AFR-IWD-039)
-    Verify completed work order closure and post-completion status lock.
+    """TC_FR_14 | Source: CFR-IWD-12, CFR-IWD-13 (AFR-IWD-040, AFR-IWD-044)
+    Verify completion and closure lifecycle transitions.
     """
     wr = WorkRequest.objects.create(
-        title="Bench repair in lecture hall",
-        description="Fix loose bolts on lecture benches.",
-        location="LHC 101",
-        category="carpentry",
-        priority="low",
-        status="completed",
-        requester_username="emp_09",
+        title="Repair campus main gate lock",
+        description="Electronic magnetic lock failure at main gate.",
+        location="Main Security Gate",
+        category="electrical",
+        priority="urgent",
+        status="in_progress",
+        requester_username="security_officer",
     )
-    resp = api.post(f"/api/v1/iwd/requests/{wr.id}/close/", {
-        "remarks": "Completed satisfactorily"
-    }, format="json", HTTP_X_USER="director")
-    assert resp.status_code == 200
-    assert resp.data["status"] == "closed"
+    resp_comp = api.post(f"/api/v1/iwd/requests/{wr.id}/complete/", {
+        "actual_cost": "8500.00"
+    }, format="json", HTTP_X_USER="eng_electrical_1")
+    assert resp_comp.status_code == 200
+    wr.refresh_from_db()
+    assert wr.status == "completed"
+
+    resp_close = api.post(f"/api/v1/iwd/requests/{wr.id}/close/", HTTP_X_USER="iwd_admin")
+    assert resp_close.status_code == 200
+    wr.refresh_from_db()
+    assert wr.status == "closed"
 
 
 @pytest.mark.django_db
 def test_tc_fr_15_record_actual_cost_on_completion(api):
-    """TC_FR_15 | Source: CFR-IWD-13 (AFR-IWD-040, AFR-IWD-041)
-    Verify recording of actual expenditure upon work completion.
+    """TC_FR_15 | Source: CFR-IWD-13 (AFR-IWD-042)
+    Verify actual expenditure recording upon work completion.
     """
     wr = WorkRequest.objects.create(
-        title="Drainage pipe cleaning",
-        description="Drain blocked near cafeteria.",
-        location="Cafeteria Outer Yard",
-        category="plumbing",
+        title="Overhead cable replacement",
+        description="Replace weather-damaged armored cable between sub-station and hostel 1.",
+        location="Substation to H1 Pole 4",
+        category="electrical",
         priority="high",
         status="in_progress",
-        requester_username="emp_10",
-        estimated_cost=15000.00,
+        requester_username="emp_08",
+        estimated_cost=28000.00,
     )
     resp = api.post(f"/api/v1/iwd/requests/{wr.id}/complete/", {
-        "actual_cost": "14200.00",
-        "note": "Work completed within estimate"
-    }, format="json", HTTP_X_USER="engineer")
+        "actual_cost": "26450.00"
+    }, format="json", HTTP_X_USER="eng_electrical_1")
     assert resp.status_code == 200
-    assert resp.data["status"] == "completed"
     wr.refresh_from_db()
-    assert float(wr.actual_cost) == 14200.00
-    assert wr.completed_at is not None
+    assert float(wr.actual_cost) == 26450.00
 
 
 @pytest.mark.django_db
 def test_tc_fr_16_contractor_registry_active(api):
     """TC_FR_16 | Source: CFR-IWD-16 (AFR-IWD-054, AFR-IWD-056)
-    Verify accredited contractor directory management and active filter.
-    """
-    payload = {
-        "name": "Apex Engineering Solutions",
-        "registration_number": "IWD-CONTR-2026-09",
-        "contact_person": "Vikas Agarwal",
-        "phone": "9876543219",
-        "email": "vikas@apexeng.in",
-        "specialization": "HVAC and Electrical Installations",
-    }
-    resp = api.post("/api/v1/iwd/contractors/", payload, format="json")
-    assert resp.status_code == 201
-    assert resp.data["registration_number"] == payload["registration_number"]
-    assert resp.data["is_active"] is True
-
-
-@pytest.mark.django_db
-def test_tc_fr_17_disallow_illegal_skip_transition(api):
-    """TC_FR_17 | Source: CFR-IWD-16 (AFR-IWD-055, AFR-IWD-057)
-    Verify disallowance of skipping workflow states (e.g., draft directly to approved).
+    Verify active-role authorization enforcement; unauthorized caller receives 403 Forbidden.
     """
     wr = WorkRequest.objects.create(
-        title="Direct approval bypass attempt",
-        description="Testing boundary state transition.",
-        location="Room 202",
-        category="repair",
-        priority="low",
-        status="draft",
-        requester_username="emp_11",
+        title="Corridor railing repair",
+        description="Fix loose stainless steel handrail.",
+        location="Admin Block",
+        category="civil",
+        priority="medium",
+        status="under_review",
+        requester_username="emp_02",
     )
-    resp = api.post(f"/api/v1/iwd/requests/{wr.id}/approve/", HTTP_X_USER="supervisor")
-    assert resp.status_code == 400
-    wr.refresh_from_db()
-    assert wr.status == "draft"
+    # Under CFR-IWD-16, system must enforce active-role authorization
+    resp = api.post(f"/api/v1/iwd/requests/{wr.id}/approve/", {}, format="json", HTTP_X_USER="guest_student")
+    assert resp.status_code == 403
+
+
+def test_tc_fr_17_disallow_illegal_skip_transition():
+    """TC_FR_17 | Source: CFR-IWD-17 (Workflow rule integrity)
+    Verify state machine prevents skipping mandatory lifecycle stages.
+    """
+    assert can_transition(RequestStatus.DRAFT, RequestStatus.APPROVED) is False
+    assert can_transition(RequestStatus.SUBMITTED, RequestStatus.COMPLETED) is False
+    with pytest.raises(IWDDomainError):
+        validate_transition(RequestStatus.DRAFT, RequestStatus.COMPLETED)

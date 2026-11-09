@@ -1,1 +1,51 @@
-<?xml version="1.0" encoding="utf-8"?><testsuites name="pytest tests"><testsuite name="pytest" errors="0" failures="0" skipped="0" tests="15" time="1.405" timestamp="2026-11-02T12:46:57.937199+05:30" hostname="MEET"><testcase classname="tests.a8.uc.test_uc" name="test_tc_uc_01_submit_maintenance_complaint_main_flow" time="0.499" /><testcase classname="tests.a8.uc.test_uc" name="test_tc_uc_02_submit_maintenance_complaint_validation_error" time="0.008" /><testcase classname="tests.a8.uc.test_uc" name="test_tc_uc_03_track_complaint_status_main_flow" time="0.011" /><testcase classname="tests.a8.uc.test_uc" name="test_tc_uc_04_assess_complaint_main_flow" time="0.007" /><testcase classname="tests.a8.uc.test_uc" name="test_tc_uc_05_prepare_submit_estimate_main_flow" time="0.006" /><testcase classname="tests.a8.uc.test_uc" name="test_tc_uc_06_flag_urgent_repair_main_flow" time="0.002" /><testcase classname="tests.a8.uc.test_uc" name="test_tc_uc_07_review_low_cost_estimate_main_flow" time="0.007" /><testcase classname="tests.a8.uc.test_uc" name="test_tc_uc_08_review_estimate_rejection_alternative" time="0.006" /><testcase classname="tests.a8.uc.test_uc" name="test_tc_uc_09_check_stock_material_main_flow" time="0.005" /><testcase classname="tests.a8.uc.test_uc" name="test_tc_uc_10_coordinate_procurement_shortage_main_flow" time="0.004" /><testcase classname="tests.a8.uc.test_uc" name="test_tc_uc_11_contractor_directory_main_flow" time="0.005" /><testcase classname="tests.a8.uc.test_uc" name="test_tc_uc_12_execute_repair_work_main_flow" time="0.005" /><testcase classname="tests.a8.uc.test_uc" name="test_tc_uc_13_verify_completed_work_main_flow" time="0.007" /><testcase classname="tests.a8.uc.test_uc" name="test_tc_uc_14_close_verified_work_main_flow" time="0.005" /><testcase classname="tests.a8.uc.test_uc" name="test_tc_uc_15_audit_history_rejected_request_main_flow" time="0.014" /></testsuite></testsuites>
+<?xml version="1.0" encoding="utf-8"?><testsuites name="pytest tests"><testsuite name="pytest" errors="0" failures="2" skipped="0" tests="15" time="28.967" timestamp="2026-11-10T00:11:08.359949+05:30" hostname="MEET"><testcase classname="tests.a8.uc.test_uc" name="test_tc_uc_01_submit_maintenance_complaint_main_flow" time="7.731" /><testcase classname="tests.a8.uc.test_uc" name="test_tc_uc_02_submit_maintenance_complaint_validation_error" time="0.129" /><testcase classname="tests.a8.uc.test_uc" name="test_tc_uc_03_track_complaint_status_main_flow" time="0.183" /><testcase classname="tests.a8.uc.test_uc" name="test_tc_uc_04_assess_complaint_main_flow" time="0.218" /><testcase classname="tests.a8.uc.test_uc" name="test_tc_uc_05_prepare_submit_estimate_main_flow" time="0.203" /><testcase classname="tests.a8.uc.test_uc" name="test_tc_uc_07_review_low_cost_estimate_main_flow" time="0.300"><failure message="assert 200 == 403&#10; +  where 200 = &lt;Response status_code=200, &quot;application/json&quot;&gt;.status_code">api = &lt;rest_framework.test.APIClient object at 0x00000172D74D04D0&gt;
+
+    @pytest.mark.django_db
+    def test_tc_uc_07_review_low_cost_estimate_main_flow(api):
+        """TC_UC_07 | Source: UC-IWD-003 Exception Flow E1
+        Unauthorized actor attempts to approve estimate; verify system rejects with 403 Forbidden.
+        """
+        wr = WorkRequest.objects.create(
+            title="Water filter tap broken",
+            description="Drinking water fountain tap leaking continuously.",
+            location="Mess Dining Hall",
+            category="plumbing",
+            priority="low",
+            status="under_review",
+            requester_username="student_01",
+            estimated_cost=1500.00,
+        )
+        # Under UC-IWD-003 Exception Flow E1, an unauthorized user cannot approve estimate
+        resp = api.post(f"/api/v1/iwd/requests/{wr.id}/approve/", {}, format="json", HTTP_X_USER="student_01")
+&gt;       assert resp.status_code == 403
+E       assert 200 == 403
+E        +  where 200 = &lt;Response status_code=200, "application/json"&gt;.status_code
+
+tests\a8\uc\test_uc.py:149: AssertionError</failure></testcase><testcase classname="tests.a8.uc.test_uc" name="test_tc_uc_08_review_estimate_rejection_alternative" time="0.253" /><testcase classname="tests.a8.uc.test_uc" name="test_tc_uc_09_check_stock_material_main_flow" time="0.207" /><testcase classname="tests.a8.uc.test_uc" name="test_tc_uc_10_coordinate_procurement_shortage_main_flow" time="0.960"><failure message="assert 404 == 400&#10; +  where 404 = &lt;HttpResponseNotFound status_code=404, &quot;text/html; charset=utf-8&quot;&gt;.status_code">api = &lt;rest_framework.test.APIClient object at 0x00000172D74AE350&gt;
+
+    @pytest.mark.django_db
+    def test_tc_uc_10_coordinate_procurement_shortage_main_flow(api):
+        """TC_UC_10 | Source: UC-IWD-006 Alternative Flow A1
+        Material allocation on work request when stock is depleted must be rejected with 400 Bad Request.
+        """
+        item = InventoryItem.objects.create(
+            name="Gate Valve 2 inch",
+            unit="pieces",
+            quantity_available=0.00,
+            unit_cost=850.00,
+            minimum_stock=5.00,
+        )
+        wr = WorkRequest.objects.create(
+            title="Replace gate valve",
+            description="Valve seized.",
+            location="Pumphouse",
+            status="in_progress",
+            requester_username="emp_02",
+        )
+        # Under UC-IWD-006 Alt Flow A1, allocating out-of-stock material must be rejected
+        resp = api.post(f"/api/v1/iwd/requests/{wr.id}/allocate_material/", {"item_id": item.id, "quantity": 1})
+&gt;       assert resp.status_code == 400
+E       assert 404 == 400
+E        +  where 404 = &lt;HttpResponseNotFound status_code=404, "text/html; charset=utf-8"&gt;.status_code
+
+tests\a8\uc\test_uc.py:217: AssertionError</failure></testcase><testcase classname="tests.a8.uc.test_uc" name="test_tc_uc_11_contractor_directory_main_flow" time="0.296" /><testcase classname="tests.a8.uc.test_uc" name="test_tc_uc_12_execute_repair_work_main_flow" time="0.275" /><testcase classname="tests.a8.uc.test_uc" name="test_tc_uc_13_verify_completed_work_main_flow" time="0.473" /><testcase classname="tests.a8.uc.test_uc" name="test_tc_uc_14_close_verified_work_main_flow" time="0.204" /><testcase classname="tests.a8.uc.test_uc" name="test_tc_uc_15_audit_history_rejected_request_main_flow" time="0.212" /><testcase classname="tests.a8.uc.test_uc" name="test_tc_uc_06_flag_urgent_repair_main_flow" time="0.058" /></testsuite></testsuites>

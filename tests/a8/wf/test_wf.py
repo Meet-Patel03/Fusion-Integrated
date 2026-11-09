@@ -6,7 +6,15 @@ from datetime import date, timedelta
 import pytest
 from rest_framework.test import APIClient
 
-from modules.iwd.domain.rules import Priority, RequestStatus, can_transition, compute_priority_score
+from modules.iwd.domain.rules import (
+    IWDDomainError,
+    Priority,
+    RequestStatus,
+    WorkCategory,
+    can_transition,
+    compute_priority_score,
+    validate_transition,
+)
 from modules.iwd.models import InventoryItem, WorkRequest, WorkRequestLog
 
 
@@ -17,187 +25,158 @@ def api():
 
 @pytest.mark.django_db
 def test_tc_wf_01_complaint_intake_and_assessment_path(api):
-    """TC_WF_01 | Source: BW-IWD-01 - Complaint Intake and Assessment Path
-    Verify workflow path from initial complaint creation through submission to under review.
+    """TC_WF_01 | Source: BW-IWD-01 (Path: Intake -> Assessment)
+    Verify sequential workflow: draft -> submitted -> under_review.
     """
     wr = WorkRequest.objects.create(
-        title="Corridor paver block repair",
-        description="Uneven paving blocks near admin block.",
-        location="Admin Block Walkway",
-        category="civil",
-        priority="low",
+        title="Fluorescent ballast replacement",
+        description="Flickering corridor tube lights outside hall.",
+        location="Hall 1 Entrance",
+        category="electrical",
+        priority="medium",
         status="draft",
-        requester_username="emp_40",
+        requester_username="emp_20",
     )
-    # Step 1: Submit
-    r1 = api.post(f"/api/v1/iwd/requests/{wr.id}/submit/", HTTP_X_USER="emp_40")
-    assert r1.status_code == 200
-    assert r1.data["status"] == "submitted"
+    resp_sub = api.post(f"/api/v1/iwd/requests/{wr.id}/submit/", HTTP_X_USER="emp_20")
+    assert resp_sub.status_code == 200
+    wr.refresh_from_db()
+    assert wr.status == "submitted"
 
-    # Step 2: Review
-    r2 = api.post(f"/api/v1/iwd/requests/{wr.id}/review/", HTTP_X_USER="engineer")
-    assert r2.status_code == 200
-    assert r2.data["status"] == "under_review"
-
+    resp_rev = api.post(f"/api/v1/iwd/requests/{wr.id}/review/", HTTP_X_USER="eng_electrical_1")
+    assert resp_rev.status_code == 200
     wr.refresh_from_db()
     assert wr.status == "under_review"
-    assert wr.submitted_at is not None
 
 
 @pytest.mark.django_db
 def test_tc_wf_02_low_cost_estimate_approval_path(api):
-    """TC_WF_02 | Source: BW-IWD-02 - Low-Cost Estimate Approval Path
-    Verify complete low-cost estimate approval path ending in approved status.
+    """TC_WF_02 | Source: BW-IWD-03 (Path: Low-Cost Approval)
+    Verify estimate approval path under low-cost threshold (< Rs. 25,000).
     """
     wr = WorkRequest.objects.create(
-        title="Classroom whiteboard mounting",
-        description="Mount 2 whiteboards in seminar hall.",
-        location="Seminar Hall 2",
-        category="carpentry",
-        priority="medium",
+        title="Repair washroom flush valve",
+        description="Replace leaking valve seal in faculty block.",
+        location="Core 3 2nd Floor",
+        category="plumbing",
+        priority="low",
         status="under_review",
-        requester_username="emp_41",
-        estimated_cost=4500.00,
+        requester_username="emp_20",
+        estimated_cost=3500.00,
     )
     resp = api.post(f"/api/v1/iwd/requests/{wr.id}/approve/", {
-        "assigned_to": "eng_civil_1",
-        "note": "Low-cost work approved for immediate execution"
-    }, format="json", HTTP_X_USER="supervisor")
+        "assigned_to": "eng_plumbing_1"
+    }, format="json", HTTP_X_USER="iwd_admin")
     assert resp.status_code == 200
-    assert resp.data["status"] == "approved"
     wr.refresh_from_db()
     assert wr.status == "approved"
+    assert wr.assigned_to == "eng_plumbing_1"
 
 
 @pytest.mark.django_db
 def test_tc_wf_03_rejected_low_cost_estimate_path(api):
-    """TC_WF_03 | Source: BW-IWD-02 / BW-IWD-12 - Rejected Low-Cost Estimate Path
-    Verify rejection path for low-cost estimate.
+    """TC_WF_03 | Source: BW-IWD-02, WF-IWD-02 (Path: Rejection Decision)
+    Verify rejection transition path enforces mandatory justification note (rejects empty note with 400).
     """
     wr = WorkRequest.objects.create(
-        title="Custom acrylic signage",
-        description="Decorative signage for department entrance.",
-        location="Department Office",
-        category="other",
+        title="Install decorative fountain",
+        description="Proposal to build ornamental fountain outside hall.",
+        location="Hall Courtyard",
+        category="civil",
         priority="low",
         status="under_review",
-        requester_username="emp_42",
-        estimated_cost=6000.00,
+        requester_username="emp_21",
     )
-    resp = api.post(f"/api/v1/iwd/requests/{wr.id}/reject/", {
-        "note": "Not justifiable from maintenance funds."
-    }, format="json", HTTP_X_USER="supervisor")
-    assert resp.status_code == 200
-    assert resp.data["status"] == "rejected"
-    wr.refresh_from_db()
-    assert wr.status == "rejected"
+    # Under WF-IWD-02 / BR-IWD-009, rejection transition without a justification note must return 400 Bad Request
+    resp = api.post(f"/api/v1/iwd/requests/{wr.id}/reject/", {"note": ""}, format="json", HTTP_X_USER="iwd_admin")
+    assert resp.status_code == 400
 
 
 @pytest.mark.django_db
 def test_tc_wf_04_hold_for_review_path(api):
-    """TC_WF_04 | Source: BW-IWD-03 / BW-IWD-04 - Hold for Review Path
-    Verify workflow hold path when committee review or additional clarification is needed.
+    """TC_WF_04 | Source: BW-IWD-04 (Path: Committee Review / Hold)
+    Verify under_review request can transition to on_hold status.
     """
     wr = WorkRequest.objects.create(
-        title="Substation transformer oil filtration",
-        description="Major transformer maintenance requiring shutdown coordination.",
-        location="Main 33kV Substation",
+        title="Major library HVAC maintenance",
+        description="Overhaul central chiller unit in central library.",
+        location="Library Plant Room",
         category="electrical",
         priority="high",
         status="under_review",
-        requester_username="emp_43",
-        estimated_cost=65000.00,
+        requester_username="librarian",
+        estimated_cost=85000.00,
     )
+    hold_note = "Awaiting committee technical evaluation."
     resp = api.post(f"/api/v1/iwd/requests/{wr.id}/hold/", {
-        "note": "Awaiting campus shutdown schedule approval."
-    }, format="json", HTTP_X_USER="supervisor")
+        "note": hold_note
+    }, format="json", HTTP_X_USER="dept_head")
     assert resp.status_code == 200
-    assert resp.data["status"] == "on_hold"
+    wr.refresh_from_db()
+    assert wr.status == "on_hold"
+    assert wr.logs.filter(to_status="on_hold", note=hold_note).exists()
 
 
-@pytest.mark.django_db
 def test_tc_wf_05_resume_from_hold_path():
-    """TC_WF_05 | Source: BW-IWD-03 - Resume from Hold Path
-    Verify workflow resumption from on_hold to in_progress or under_review.
+    """TC_WF_05 | Source: BW-IWD-04 (Path: Resume from Hold)
+    Verify state machine allows resumption from on_hold to in_progress or rejected.
     """
     assert can_transition(RequestStatus.ON_HOLD, RequestStatus.IN_PROGRESS) is True
     assert can_transition(RequestStatus.ON_HOLD, RequestStatus.REJECTED) is True
+    assert can_transition(RequestStatus.ON_HOLD, RequestStatus.DRAFT) is False
 
 
 @pytest.mark.django_db
-def test_tc_wf_06_material_issue_stock_tracking():
-    """TC_WF_06 | Source: BW-IWD-06 - Stock Available - Material Issue Workflow
-    Verify inventory deduction / tracking during material issue.
+def test_tc_wf_06_material_issue_stock_tracking(api):
+    """TC_WF_06 | Source: BW-IWD-08 (Path: Material Issuance & Low-Stock Tracking)
+    Verify inventory query reflects items below minimum stock threshold.
     """
     item = InventoryItem.objects.create(
-        name="GI Pipe 1.5 inch",
-        unit="meters",
-        quantity_available=50.00,
-        unit_cost=340.00,
+        name="Ball Bearing 6204",
+        unit="pieces",
+        quantity_available=2.00,
+        unit_cost=150.00,
         minimum_stock=10.00,
     )
-    # Deduct 15 meters for work execution
-    item.quantity_available -= 15.00
-    item.save()
-    item.refresh_from_db()
-    assert float(item.quantity_available) == 35.00
-    assert item.is_low_stock is False
+    resp = api.get("/api/v1/iwd/inventory/low_stock/")
+    assert resp.status_code == 200
+    names = [i["name"] for i in resp.data]
+    assert item.name in names
 
 
 @pytest.mark.django_db
 def test_tc_wf_07_happy_path_traversal(api):
-    """TC_WF_07 | Source: BW-IWD-09 - Work Execution and Verification Success Path
-    Verify end-to-end execution path: approved -> in_progress -> completed -> closed.
+    """TC_WF_07 | Source: BW-IWD-11, BR-IWD-014 Physical Verification Gate Path
+    Verify work request cannot be closed without physical verification (rejects unverified closure with 400).
     """
     wr = WorkRequest.objects.create(
-        title="Water filter cartridge replacement",
-        description="Routine filter change for RO unit.",
-        location="Hostel 2 Dining",
-        category="repair",
-        priority="medium",
-        status="approved",
-        requester_username="emp_44",
-        estimated_cost=3000.00,
+        title="Fix hostel geyser",
+        description="Geyser heating coil burnt out.",
+        location="Hostel 4 Ground Floor",
+        category="electrical",
+        priority="high",
+        status="completed",
+        requester_username="warden_01",
     )
-    # Step 1: Start
-    r1 = api.post(f"/api/v1/iwd/requests/{wr.id}/start/", HTTP_X_USER="engineer")
-    assert r1.status_code == 200
-    assert r1.data["status"] == "in_progress"
-
-    # Step 2: Complete
-    r2 = api.post(f"/api/v1/iwd/requests/{wr.id}/complete/", {
-        "actual_cost": "2850.00"
-    }, format="json", HTTP_X_USER="engineer")
-    assert r2.status_code == 200
-    assert r2.data["status"] == "completed"
-
-    # Step 3: Close
-    r3 = api.post(f"/api/v1/iwd/requests/{wr.id}/close/", {
-        "remarks": "Cartridge replaced; TDS verified at 75 ppm."
-    }, format="json", HTTP_X_USER="supervisor")
-    assert r3.status_code == 200
-    assert r3.data["status"] == "closed"
-
-    wr.refresh_from_db()
-    assert wr.status == "closed"
-    assert float(wr.actual_cost) == 2850.00
+    # Under BW-IWD-11 and BR-IWD-014, closure without physical verification must be rejected
+    resp = api.post(f"/api/v1/iwd/requests/{wr.id}/close/", format="json", HTTP_X_USER="warden_01")
+    assert resp.status_code == 400
 
 
 @pytest.mark.django_db
 def test_tc_wf_08_guard_violation_unapproved_completion(api):
-    """TC_WF_08 | Source: CW-IWD-01 - Estimate Approval Routing Guard Check
-    Verify state machine prevents completing a request that has not been approved.
+    """TC_WF_08 | Source: BW-IWD-14 (Path: Execution Guard Violation)
+    Verify work request cannot jump directly from under_review to completed.
     """
     wr = WorkRequest.objects.create(
-        title="Unapproved repair attempt",
-        description="Attempting to complete without approval.",
-        location="Lab 1",
-        category="repair",
+        title="Unapproved roof shed",
+        description="Shed construction without approval.",
+        location="Backyard",
+        category="civil",
         priority="low",
         status="under_review",
-        requester_username="emp_45",
+        requester_username="emp_23",
     )
-    resp = api.post(f"/api/v1/iwd/requests/{wr.id}/complete/", HTTP_X_USER="engineer")
+    resp = api.post(f"/api/v1/iwd/requests/{wr.id}/complete/", format="json", HTTP_X_USER="emp_23")
     assert resp.status_code == 400
     wr.refresh_from_db()
     assert wr.status == "under_review"
@@ -205,30 +184,30 @@ def test_tc_wf_08_guard_violation_unapproved_completion(api):
 
 @pytest.mark.django_db
 def test_tc_wf_09_terminal_state_boundary(api):
-    """TC_WF_09 | Source: CW-IWD-03 - Work Completion and Verification Boundary
-    Verify closing a work request permanently terminates its lifecycle.
+    """TC_WF_09 | Source: BW-IWD-15 (Path: Terminal State Boundary)
+    Verify terminal states (closed, rejected) disallow any subsequent transitions.
     """
     wr = WorkRequest.objects.create(
-        title="Closed work order",
-        description="Finished and settled work order.",
-        location="Faculty Quarter 5",
+        title="Closed routine painting work",
+        description="Corridor paint refreshed.",
+        location="Corridor 1",
         category="repair",
         priority="low",
         status="closed",
-        requester_username="emp_46",
+        requester_username="emp_24",
     )
-    resp_start = api.post(f"/api/v1/iwd/requests/{wr.id}/start/", HTTP_X_USER="engineer")
-    assert resp_start.status_code == 400
-    resp_approve = api.post(f"/api/v1/iwd/requests/{wr.id}/approve/", HTTP_X_USER="supervisor")
-    assert resp_approve.status_code == 400
+    resp = api.post(f"/api/v1/iwd/requests/{wr.id}/start/", format="json", HTTP_X_USER="emp_24")
+    assert resp.status_code == 400
+    wr.refresh_from_db()
+    assert wr.status == "closed"
 
 
 def test_tc_wf_10_urgent_fast_track_lead_time_boost():
-    """TC_WF_10 | Source: BW-IWD-15 - Urgent Fast-Track Review Path
-    Verify fast-track urgency path prioritizing urgent maintenance.
+    """TC_WF_10 | Source: CW-IWD-02 (Path: Urgent Fast-Track Routing)
+    Verify fast-track urgency scoring boosts priority score for short lead times.
     """
-    tomorrow = date.today() + timedelta(days=1)
-    score = compute_priority_score(Priority.URGENT, tomorrow)
-    # base 4 + lead-time urgency boost 4 = 8
-    assert score == 8
-
+    score_emergency = compute_priority_score(Priority.URGENT, date.today() + timedelta(days=1))
+    score_standard = compute_priority_score(Priority.URGENT, date.today() + timedelta(days=60))
+    assert score_emergency == 8
+    assert score_standard == 4
+    assert score_emergency > score_standard

@@ -1,1 +1,45 @@
-<?xml version="1.0" encoding="utf-8"?><testsuites name="pytest tests"><testsuite name="pytest" errors="0" failures="0" skipped="0" tests="10" time="1.146" timestamp="2026-11-02T12:54:31.527968+05:30" hostname="MEET"><testcase classname="tests.a8.wf.test_wf" name="test_tc_wf_01_complaint_intake_and_assessment_path" time="0.436" /><testcase classname="tests.a8.wf.test_wf" name="test_tc_wf_02_low_cost_estimate_approval_path" time="0.009" /><testcase classname="tests.a8.wf.test_wf" name="test_tc_wf_03_rejected_low_cost_estimate_path" time="0.006" /><testcase classname="tests.a8.wf.test_wf" name="test_tc_wf_04_hold_for_review_path" time="0.008" /><testcase classname="tests.a8.wf.test_wf" name="test_tc_wf_05_resume_from_hold_path" time="0.002" /><testcase classname="tests.a8.wf.test_wf" name="test_tc_wf_06_material_issue_stock_tracking" time="0.003" /><testcase classname="tests.a8.wf.test_wf" name="test_tc_wf_07_happy_path_traversal" time="0.012" /><testcase classname="tests.a8.wf.test_wf" name="test_tc_wf_08_guard_violation_unapproved_completion" time="0.009" /><testcase classname="tests.a8.wf.test_wf" name="test_tc_wf_09_terminal_state_boundary" time="0.006" /><testcase classname="tests.a8.wf.test_wf" name="test_tc_wf_10_urgent_fast_track_lead_time_boost" time="0.002" /></testsuite></testsuites>
+<?xml version="1.0" encoding="utf-8"?><testsuites name="pytest tests"><testsuite name="pytest" errors="0" failures="2" skipped="0" tests="10" time="15.505" timestamp="2026-11-10T00:12:37.067955+05:30" hostname="MEET"><testcase classname="tests.a8.wf.test_wf" name="test_tc_wf_01_complaint_intake_and_assessment_path" time="5.537" /><testcase classname="tests.a8.wf.test_wf" name="test_tc_wf_02_low_cost_estimate_approval_path" time="0.102" /><testcase classname="tests.a8.wf.test_wf" name="test_tc_wf_03_rejected_low_cost_estimate_path" time="0.073"><failure message="assert 200 == 400&#10; +  where 200 = &lt;Response status_code=200, &quot;application/json&quot;&gt;.status_code">api = &lt;rest_framework.test.APIClient object at 0x00000225157116D0&gt;
+
+    @pytest.mark.django_db
+    def test_tc_wf_03_rejected_low_cost_estimate_path(api):
+        """TC_WF_03 | Source: BW-IWD-02, WF-IWD-02 (Path: Rejection Decision)
+        Verify rejection transition path enforces mandatory justification note (rejects empty note with 400).
+        """
+        wr = WorkRequest.objects.create(
+            title="Install decorative fountain",
+            description="Proposal to build ornamental fountain outside hall.",
+            location="Hall Courtyard",
+            category="civil",
+            priority="low",
+            status="under_review",
+            requester_username="emp_21",
+        )
+        # Under WF-IWD-02 / BR-IWD-009, rejection transition without a justification note must return 400 Bad Request
+        resp = api.post(f"/api/v1/iwd/requests/{wr.id}/reject/", {"note": ""}, format="json", HTTP_X_USER="iwd_admin")
+&gt;       assert resp.status_code == 400
+E       assert 200 == 400
+E        +  where 200 = &lt;Response status_code=200, "application/json"&gt;.status_code
+
+tests\a8\wf\test_wf.py:91: AssertionError</failure></testcase><testcase classname="tests.a8.wf.test_wf" name="test_tc_wf_04_hold_for_review_path" time="0.092" /><testcase classname="tests.a8.wf.test_wf" name="test_tc_wf_06_material_issue_stock_tracking" time="0.079" /><testcase classname="tests.a8.wf.test_wf" name="test_tc_wf_07_happy_path_traversal" time="0.057"><failure message="assert 200 == 400&#10; +  where 200 = &lt;Response status_code=200, &quot;application/json&quot;&gt;.status_code">api = &lt;rest_framework.test.APIClient object at 0x00000225156F7530&gt;
+
+    @pytest.mark.django_db
+    def test_tc_wf_07_happy_path_traversal(api):
+        """TC_WF_07 | Source: BW-IWD-11, BR-IWD-014 Physical Verification Gate Path
+        Verify work request cannot be closed without physical verification (rejects unverified closure with 400).
+        """
+        wr = WorkRequest.objects.create(
+            title="Fix hostel geyser",
+            description="Geyser heating coil burnt out.",
+            location="Hostel 4 Ground Floor",
+            category="electrical",
+            priority="high",
+            status="completed",
+            requester_username="warden_01",
+        )
+        # Under BW-IWD-11 and BR-IWD-014, closure without physical verification must be rejected
+        resp = api.post(f"/api/v1/iwd/requests/{wr.id}/close/", format="json", HTTP_X_USER="warden_01")
+&gt;       assert resp.status_code == 400
+E       assert 200 == 400
+E        +  where 200 = &lt;Response status_code=200, "application/json"&gt;.status_code
+
+tests\a8\wf\test_wf.py:162: AssertionError</failure></testcase><testcase classname="tests.a8.wf.test_wf" name="test_tc_wf_08_guard_violation_unapproved_completion" time="0.108" /><testcase classname="tests.a8.wf.test_wf" name="test_tc_wf_09_terminal_state_boundary" time="0.072" /><testcase classname="tests.a8.wf.test_wf" name="test_tc_wf_05_resume_from_hold_path" time="0.020" /><testcase classname="tests.a8.wf.test_wf" name="test_tc_wf_10_urgent_fast_track_lead_time_boost" time="0.028" /></testsuite></testsuites>

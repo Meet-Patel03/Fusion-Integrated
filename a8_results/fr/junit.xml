@@ -1,1 +1,63 @@
-<?xml version="1.0" encoding="utf-8"?><testsuites name="pytest tests"><testsuite name="pytest" errors="0" failures="0" skipped="0" tests="17" time="3.246" timestamp="2026-11-02T12:31:47.532452+05:30" hostname="MEET"><testcase classname="tests.a8.fr.test_fr" name="test_tc_fr_01_submit_valid_complaint" time="1.238" /><testcase classname="tests.a8.fr.test_fr" name="test_tc_fr_02_validation_mandatory_fields" time="0.019" /><testcase classname="tests.a8.fr.test_fr" name="test_tc_fr_03_track_submitted_complaint_status" time="0.039" /><testcase classname="tests.a8.fr.test_fr" name="test_tc_fr_04_complaint_assignment_visibility" time="0.008" /><testcase classname="tests.a8.fr.test_fr" name="test_tc_fr_05_engineer_submit_estimate" time="0.016" /><testcase classname="tests.a8.fr.test_fr" name="test_tc_fr_06_cost_band_classification" time="0.005" /><testcase classname="tests.a8.fr.test_fr" name="test_tc_fr_07_low_cost_approval_workflow" time="0.023" /><testcase classname="tests.a8.fr.test_fr" name="test_tc_fr_08_mid_range_hold_review" time="0.019" /><testcase classname="tests.a8.fr.test_fr" name="test_tc_fr_09_high_cost_director_threshold" time="0.007" /><testcase classname="tests.a8.fr.test_fr" name="test_tc_fr_10_rejected_request_retains_reason" time="0.024" /><testcase classname="tests.a8.fr.test_fr" name="test_tc_fr_11_inventory_low_stock_query" time="0.017" /><testcase classname="tests.a8.fr.test_fr" name="test_tc_fr_12_work_start_progression" time="0.010" /><testcase classname="tests.a8.fr.test_fr" name="test_tc_fr_13_audit_trail_logging" time="0.020" /><testcase classname="tests.a8.fr.test_fr" name="test_tc_fr_14_work_closure_transition" time="0.010" /><testcase classname="tests.a8.fr.test_fr" name="test_tc_fr_15_record_actual_cost_on_completion" time="0.010" /><testcase classname="tests.a8.fr.test_fr" name="test_tc_fr_16_contractor_registry_active" time="0.111" /><testcase classname="tests.a8.fr.test_fr" name="test_tc_fr_17_disallow_illegal_skip_transition" time="0.015" /></testsuite></testsuites>
+<?xml version="1.0" encoding="utf-8"?><testsuites name="pytest tests"><testsuite name="pytest" errors="0" failures="3" skipped="0" tests="17" time="20.044" timestamp="2026-11-10T00:10:23.120334+05:30" hostname="MEET"><testcase classname="tests.a8.fr.test_fr" name="test_tc_fr_01_submit_valid_complaint" time="5.193" /><testcase classname="tests.a8.fr.test_fr" name="test_tc_fr_02_validation_mandatory_fields" time="0.069" /><testcase classname="tests.a8.fr.test_fr" name="test_tc_fr_03_track_submitted_complaint_status" time="0.141" /><testcase classname="tests.a8.fr.test_fr" name="test_tc_fr_04_complaint_assignment_visibility" time="0.138" /><testcase classname="tests.a8.fr.test_fr" name="test_tc_fr_05_engineer_submit_estimate" time="0.078" /><testcase classname="tests.a8.fr.test_fr" name="test_tc_fr_07_low_cost_approval_workflow" time="0.115" /><testcase classname="tests.a8.fr.test_fr" name="test_tc_fr_08_mid_range_hold_review" time="0.103" /><testcase classname="tests.a8.fr.test_fr" name="test_tc_fr_09_high_cost_director_threshold" time="0.329"><failure message="assert 404 == 400&#10; +  where 404 = &lt;HttpResponseNotFound status_code=404, &quot;text/html; charset=utf-8&quot;&gt;.status_code">api = &lt;rest_framework.test.APIClient object at 0x00000244BBBAC160&gt;
+
+    @pytest.mark.django_db
+    def test_tc_fr_09_high_cost_director_threshold(api):
+        """TC_FR_09 | Source: CFR-IWD-09 (AFR-IWD-029, AFR-IWD-030)
+        Verify maintenance material allocation validates stock availability and rejects when depleted.
+        """
+        item = InventoryItem.objects.create(
+            name="Cement Bag 50kg",
+            unit="bags",
+            quantity_available=0.00,
+            unit_cost=380.00,
+            minimum_stock=10.00,
+        )
+        wr = WorkRequest.objects.create(
+            title="Floor patching",
+            description="Patch broken concrete floor.",
+            location="Workshop Floor",
+            category="civil",
+            priority="medium",
+            status="in_progress",
+            requester_username="emp_10",
+        )
+        # Under CFR-IWD-09, material allocation requires stock verification
+        resp = api.post(f"/api/v1/iwd/requests/{wr.id}/allocate_material/", {"item_id": item.id, "quantity": 5})
+&gt;       assert resp.status_code == 400
+E       assert 404 == 400
+E        +  where 404 = &lt;HttpResponseNotFound status_code=404, "text/html; charset=utf-8"&gt;.status_code
+
+tests\a8\fr\test_fr.py:208: AssertionError</failure></testcase><testcase classname="tests.a8.fr.test_fr" name="test_tc_fr_10_rejected_request_retains_reason" time="0.110" /><testcase classname="tests.a8.fr.test_fr" name="test_tc_fr_11_inventory_low_stock_query" time="0.066" /><testcase classname="tests.a8.fr.test_fr" name="test_tc_fr_12_work_start_progression" time="0.087" /><testcase classname="tests.a8.fr.test_fr" name="test_tc_fr_13_audit_trail_logging" time="0.114" /><testcase classname="tests.a8.fr.test_fr" name="test_tc_fr_14_work_closure_transition" time="0.164" /><testcase classname="tests.a8.fr.test_fr" name="test_tc_fr_15_record_actual_cost_on_completion" time="0.095" /><testcase classname="tests.a8.fr.test_fr" name="test_tc_fr_16_contractor_registry_active" time="0.104"><failure message="assert 200 == 403&#10; +  where 200 = &lt;Response status_code=200, &quot;application/json&quot;&gt;.status_code">api = &lt;rest_framework.test.APIClient object at 0x00000244BBB8D980&gt;
+
+    @pytest.mark.django_db
+    def test_tc_fr_16_contractor_registry_active(api):
+        """TC_FR_16 | Source: CFR-IWD-16 (AFR-IWD-054, AFR-IWD-056)
+        Verify active-role authorization enforcement; unauthorized caller receives 403 Forbidden.
+        """
+        wr = WorkRequest.objects.create(
+            title="Corridor railing repair",
+            description="Fix loose stainless steel handrail.",
+            location="Admin Block",
+            category="civil",
+            priority="medium",
+            status="under_review",
+            requester_username="emp_02",
+        )
+        # Under CFR-IWD-16, system must enforce active-role authorization
+        resp = api.post(f"/api/v1/iwd/requests/{wr.id}/approve/", {}, format="json", HTTP_X_USER="guest_student")
+&gt;       assert resp.status_code == 403
+E       assert 200 == 403
+E        +  where 200 = &lt;Response status_code=200, "application/json"&gt;.status_code
+
+tests\a8\fr\test_fr.py:370: AssertionError</failure></testcase><testcase classname="tests.a8.fr.test_fr" name="test_tc_fr_06_cost_band_classification" time="0.024"><failure message="assert True is False&#10; +  where True = requires_director_approval(180000.0)">def test_tc_fr_06_cost_band_classification():
+        """TC_FR_06 | Source: CFR-IWD-04 (AFR-IWD-014, AFR-IWD-015)
+        Verify estimate cost classification: mid-range estimate &lt;= Rs. 2.5 Lakh does NOT require Director approval.
+        """
+        # Under CFR-IWD-04 / Table 0 PS 4.1: Mid-cost band is Rs. 25,000 to Rs. 2.5 Lakh (approved by Dept Head).
+        # Director approval is required ONLY for high-cost (&gt; Rs. 2.5 Lakh).
+        estimate = 180000.00
+&gt;       assert requires_director_approval(estimate) is False
+E       assert True is False
+E        +  where True = requires_director_approval(180000.0)
+
+tests\a8\fr\test_fr.py:138: AssertionError</failure></testcase><testcase classname="tests.a8.fr.test_fr" name="test_tc_fr_17_disallow_illegal_skip_transition" time="0.031" /></testsuite></testsuites>

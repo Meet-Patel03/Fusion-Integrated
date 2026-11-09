@@ -1,1 +1,55 @@
-<?xml version="1.0" encoding="utf-8"?><testsuites name="pytest tests"><testsuite name="pytest" errors="0" failures="0" skipped="0" tests="14" time="1.402" timestamp="2026-11-02T12:52:11.720180+05:30" hostname="MEET"><testcase classname="tests.a8.br.test_br" name="test_tc_br_01_active_role_authorization" time="0.484" /><testcase classname="tests.a8.br.test_br" name="test_tc_br_02_automatic_engineer_assignment" time="0.014" /><testcase classname="tests.a8.br.test_br" name="test_tc_br_08_rejection_reason_persistence" time="0.008" /><testcase classname="tests.a8.br.test_br" name="test_tc_br_09_inventory_low_stock_trigger" time="0.002" /><testcase classname="tests.a8.br.test_br" name="test_tc_br_10_inventory_adequate_stock_trigger" time="0.002" /><testcase classname="tests.a8.br.test_br" name="test_tc_br_12_audit_logging_decision_trail" time="0.007" /><testcase classname="tests.a8.br.test_br" name="test_tc_br_03_cost_band_routing_low_cost" time="0.001" /><testcase classname="tests.a8.br.test_br" name="test_tc_br_04_cost_band_routing_high_cost_upper_threshold" time="0.001" /><testcase classname="tests.a8.br.test_br" name="test_tc_br_05_cost_band_routing_boundary_lower_threshold" time="0.001" /><testcase classname="tests.a8.br.test_br" name="test_tc_br_06_high_cost_bidding_budget_rule" time="0.001" /><testcase classname="tests.a8.br.test_br" name="test_tc_br_07_new_construction_budget_rule" time="0.001" /><testcase classname="tests.a8.br.test_br" name="test_tc_br_11_urgent_priority_scoring_acceleration" time="0.001" /><testcase classname="tests.a8.br.test_br" name="test_tc_br_13_illegal_transition_rejection" time="0.002" /><testcase classname="tests.a8.br.test_br" name="test_tc_br_14_closed_state_is_terminal" time="0.002" /></testsuite></testsuites>
+<?xml version="1.0" encoding="utf-8"?><testsuites name="pytest tests"><testsuite name="pytest" errors="0" failures="3" skipped="0" tests="14" time="16.652" timestamp="2026-11-10T00:11:59.307339+05:30" hostname="MEET"><testcase classname="tests.a8.br.test_br" name="test_tc_br_01_active_role_authorization" time="6.009"><failure message="assert 200 == 403&#10; +  where 200 = &lt;Response status_code=200, &quot;application/json&quot;&gt;.status_code">api = &lt;rest_framework.test.APIClient object at 0x00000165EF46FB60&gt;
+
+    @pytest.mark.django_db
+    def test_tc_br_01_active_role_authorization(api):
+        """TC_BR_01 | Source: BR-IWD-001 - Active-role authorization
+        Ensure work request approval enforces authorized role; unauthorized user must receive 403 Forbidden.
+        """
+        wr = WorkRequest.objects.create(
+            title="Fix classroom lighting circuit",
+            description="Circuit breaker trips upon switching on lights.",
+            location="LH 201",
+            category="electrical",
+            priority="high",
+            status="under_review",
+            requester_username="faculty_01",
+        )
+        # Under BR-IWD-001, a user without active supervisor/engineer role cannot approve
+        resp = api.post(f"/api/v1/iwd/requests/{wr.id}/approve/", {}, format="json", HTTP_X_USER="student_unauthorized")
+&gt;       assert resp.status_code == 403
+E       assert 200 == 403
+E        +  where 200 = &lt;Response status_code=200, "application/json"&gt;.status_code
+
+tests\a8\br\test_br.py:44: AssertionError</failure></testcase><testcase classname="tests.a8.br.test_br" name="test_tc_br_02_automatic_engineer_assignment" time="0.108" /><testcase classname="tests.a8.br.test_br" name="test_tc_br_08_rejection_reason_persistence" time="0.098"><failure message="assert 200 == 400&#10; +  where 200 = &lt;Response status_code=200, &quot;application/json&quot;&gt;.status_code">api = &lt;rest_framework.test.APIClient object at 0x00000165EFB647D0&gt;
+
+    @pytest.mark.django_db
+    def test_tc_br_08_rejection_reason_persistence(api):
+        """TC_BR_08 | Source: BR-IWD-009 - Rejection reason mandatory validation
+        Verify rejection without a mandatory justification note is rejected with 400 Bad Request.
+        """
+        wr = WorkRequest.objects.create(
+            title="Excessive lab partition wall",
+            description="Construct new partition in faculty lab.",
+            location="Lab 3",
+            category="civil",
+            priority="low",
+            status="under_review",
+            requester_username="emp_31",
+        )
+        # Under BR-IWD-009, rejection must require a non-empty justification reason
+        resp = api.post(f"/api/v1/iwd/requests/{wr.id}/reject/", {"note": ""}, format="json", HTTP_X_USER="supervisor")
+&gt;       assert resp.status_code == 400
+E       assert 200 == 400
+E        +  where 200 = &lt;Response status_code=200, "application/json"&gt;.status_code
+
+tests\a8\br\test_br.py:127: AssertionError</failure></testcase><testcase classname="tests.a8.br.test_br" name="test_tc_br_09_inventory_low_stock_trigger" time="0.014" /><testcase classname="tests.a8.br.test_br" name="test_tc_br_10_inventory_adequate_stock_trigger" time="0.021" /><testcase classname="tests.a8.br.test_br" name="test_tc_br_12_audit_logging_decision_trail" time="0.095" /><testcase classname="tests.a8.br.test_br" name="test_tc_br_03_cost_band_routing_low_cost" time="0.016" /><testcase classname="tests.a8.br.test_br" name="test_tc_br_04_cost_band_routing_high_cost_upper_threshold" time="0.019"><failure message="assert True is False&#10; +  where True = requires_director_approval(150000.0)">def test_tc_br_04_cost_band_routing_high_cost_upper_threshold():
+        """TC_BR_04 | Source: BR-IWD-003, BR-IWD-007 - Cost-band routing (&gt; Rs. 2.5 Lakh threshold)
+        Verify estimate &lt;= Rs. 2,50,000 (mid-range band) does NOT require Director authorization under specification.
+        """
+        # Under BR-IWD-003 and BR-IWD-007: Rs. 25,000 &lt;= total &lt;= Rs. 2.5 Lakh is mid-range (approved by Department Head).
+        # Director approval is required ONLY for estimates &gt; Rs. 2.5 Lakh (250,000).
+&gt;       assert requires_director_approval(150000.00) is False
+E       assert True is False
+E        +  where True = requires_director_approval(150000.0)
+
+tests\a8\br\test_br.py:84: AssertionError</failure></testcase><testcase classname="tests.a8.br.test_br" name="test_tc_br_05_cost_band_routing_boundary_lower_threshold" time="0.024" /><testcase classname="tests.a8.br.test_br" name="test_tc_br_06_high_cost_bidding_budget_rule" time="0.017" /><testcase classname="tests.a8.br.test_br" name="test_tc_br_07_new_construction_budget_rule" time="0.019" /><testcase classname="tests.a8.br.test_br" name="test_tc_br_11_urgent_priority_scoring_acceleration" time="0.056" /><testcase classname="tests.a8.br.test_br" name="test_tc_br_13_illegal_transition_rejection" time="0.039" /><testcase classname="tests.a8.br.test_br" name="test_tc_br_14_closed_state_is_terminal" time="0.030" /></testsuite></testsuites>

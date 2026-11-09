@@ -28,20 +28,20 @@ def api():
 @pytest.mark.django_db
 def test_tc_br_01_active_role_authorization(api):
     """TC_BR_01 | Source: BR-IWD-001 - Active-role authorization
-    Ensure work request creation validates requester identity and requires valid user.
+    Ensure work request approval enforces authorized role; unauthorized user must receive 403 Forbidden.
     """
-    payload = {
-        "title": "Fix classroom lighting circuit",
-        "description": "Circuit breaker trips upon switching on lights.",
-        "location": "LH 201",
-        "category": "electrical",
-        "priority": "high",
-        "estimated_cost": "2000.00",
-    }
-    resp = api.post("/api/v1/iwd/requests/", payload, format="json", HTTP_X_USER="faculty_01")
-    assert resp.status_code == 201
-    req_obj = WorkRequest.objects.get(pk=resp.data["id"])
-    assert req_obj.requester_username == "faculty_01"
+    wr = WorkRequest.objects.create(
+        title="Fix classroom lighting circuit",
+        description="Circuit breaker trips upon switching on lights.",
+        location="LH 201",
+        category="electrical",
+        priority="high",
+        status="under_review",
+        requester_username="faculty_01",
+    )
+    # Under BR-IWD-001, a user without active supervisor/engineer role cannot approve
+    resp = api.post(f"/api/v1/iwd/requests/{wr.id}/approve/", {}, format="json", HTTP_X_USER="student_unauthorized")
+    assert resp.status_code == 403
 
 
 @pytest.mark.django_db
@@ -76,18 +76,20 @@ def test_tc_br_03_cost_band_routing_low_cost():
 
 
 def test_tc_br_04_cost_band_routing_high_cost_upper_threshold():
-    """TC_BR_04 | Source: BR-IWD-003 - Cost-band routing (> Rs. 1,00,000 high-cost threshold)
-    Verify high-cost threshold check (> Rs. 1,00,000) requiring Director authorization.
+    """TC_BR_04 | Source: BR-IWD-003, BR-IWD-007 - Cost-band routing (> Rs. 2.5 Lakh threshold)
+    Verify estimate <= Rs. 2,50,000 (mid-range band) does NOT require Director authorization under specification.
     """
-    assert requires_director_approval(125000.00) is True
+    # Under BR-IWD-003 and BR-IWD-007: Rs. 25,000 <= total <= Rs. 2.5 Lakh is mid-range (approved by Department Head).
+    # Director approval is required ONLY for estimates > Rs. 2.5 Lakh (250,000).
+    assert requires_director_approval(150000.00) is False
 
 
 def test_tc_br_05_cost_band_routing_boundary_lower_threshold():
-    """TC_BR_05 | Source: BR-IWD-003 - Cost-band routing (<= Rs. 1,00,000 boundary)
-    Verify estimate <= Rs. 1,00,000 does not require Director escalation.
+    """TC_BR_05 | Source: BR-IWD-003 - Cost-band routing (<= Rs. 25,000 boundary)
+    Verify estimate < Rs. 25,000 does not require Department Head / Director escalation.
     """
-    assert requires_director_approval(100000.00) is False
-    assert requires_director_approval(99999.00) is False
+    assert requires_director_approval(24999.00) is False
+    assert requires_director_approval(10000.00) is False
 
 
 def test_tc_br_06_high_cost_bidding_budget_rule():
@@ -108,8 +110,8 @@ def test_tc_br_07_new_construction_budget_rule():
 
 @pytest.mark.django_db
 def test_tc_br_08_rejection_reason_persistence(api):
-    """TC_BR_08 | Source: BR-IWD-009 - Rejection reason and resubmission
-    Verify rejection transitions cleanly and records mandatory reason note.
+    """TC_BR_08 | Source: BR-IWD-009 - Rejection reason mandatory validation
+    Verify rejection without a mandatory justification note is rejected with 400 Bad Request.
     """
     wr = WorkRequest.objects.create(
         title="Excessive lab partition wall",
@@ -120,14 +122,9 @@ def test_tc_br_08_rejection_reason_persistence(api):
         status="under_review",
         requester_username="emp_31",
     )
-    rejection_note = "Scope unclear; revise specification and reduce footprint."
-    resp = api.post(f"/api/v1/iwd/requests/{wr.id}/reject/", {
-        "note": rejection_note
-    }, format="json", HTTP_X_USER="supervisor")
-    assert resp.status_code == 200
-    wr.refresh_from_db()
-    assert wr.status == "rejected"
-    assert wr.logs.filter(to_status="rejected", note=rejection_note).exists()
+    # Under BR-IWD-009, rejection must require a non-empty justification reason
+    resp = api.post(f"/api/v1/iwd/requests/{wr.id}/reject/", {"note": ""}, format="json", HTTP_X_USER="supervisor")
+    assert resp.status_code == 400
 
 
 @pytest.mark.django_db
@@ -207,4 +204,3 @@ def test_tc_br_14_closed_state_is_terminal():
     """
     for target in RequestStatus:
         assert can_transition(RequestStatus.CLOSED, target) is False
-
